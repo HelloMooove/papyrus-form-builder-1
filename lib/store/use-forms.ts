@@ -2,15 +2,29 @@
 
 import { useEffect, useState } from 'react';
 import type { Form } from '@/types';
-import { getForm, listForms } from './local-forms';
+import { getForm, listForms } from './index';
 
 /** Hook qui s'abonne aux changements localStorage du store Papyrus. */
 export function useForms(): Form[] {
   const [forms, setForms] = useState<Form[]>([]);
 
   useEffect(() => {
-    setForms(listForms());
-    const refresh = () => setForms(listForms());
+    const loadForms = async () => {
+      try {
+        const result = await listForms();
+        setForms(result);
+      } catch (error) {
+        console.error('Failed to load forms:', error);
+        setForms([]);
+      }
+    };
+
+    loadForms();
+
+    const refresh = () => {
+      loadForms();
+    };
+
     window.addEventListener('papyrus:forms-changed', refresh);
     window.addEventListener('storage', refresh);
     return () => {
@@ -27,9 +41,25 @@ export function useForm(id: string): { form: Form | null; loading: boolean } {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setForm(getForm(id));
-    setLoading(false);
-    const refresh = () => setForm(getForm(id));
+    const loadForm = async () => {
+      setLoading(true);
+      try {
+        const result = await getForm(id);
+        setForm(result);
+      } catch (error) {
+        console.error('Failed to load form:', error);
+        setForm(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadForm();
+
+    const refresh = () => {
+      loadForm();
+    };
+
     window.addEventListener('papyrus:forms-changed', refresh);
     window.addEventListener('storage', refresh);
     return () => {

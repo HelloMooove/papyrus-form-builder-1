@@ -3,7 +3,7 @@
 import { ChevronDown, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { FieldType, MultilingualText, SubField } from '@/types';
-import { newOptionId } from '@/lib/store/local-forms';
+import { newOptionId } from '@/lib/store';
 import { FIELD_CATEGORIES, FIELD_META } from '@/lib/field-meta';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/Switch';

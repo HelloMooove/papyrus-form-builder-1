@@ -2,7 +2,7 @@
 
 import type { Field, Form, FormScope, MultilingualText } from '@/types';
 import { MOOOOVE_TEMPLATES } from '@/lib/templates/seeds';
-import { createForm, updateForm } from './local-forms';
+import { createForm, updateForm } from './index';
 
 /**
  * Récupère tous les modèles disponibles, regroupés par scope.
@@ -40,33 +40,33 @@ export function getTemplate(id: string, localForms: Form[]): Form | null {
  * pour le form et tous ses champs (options, sous-champs). Le clone démarre en brouillon
  * non-template.
  */
-export function cloneTemplate(template: Form): Form {
+export async function cloneTemplate(template: Form): Promise<Form> {
   // 1. Crée un form vide avec un titre dérivé du modèle
-  const fresh = createForm(template.title);
+  const fresh = await createForm(template.title);
 
   // 2. Remappe tous les IDs des champs et de leurs options / sous-champs
   const newFields: Field[] = (template.fields ?? []).map((f) => remapField(f, fresh.id));
 
   // 3. Copie le theme et les réglages du modèle (mais reste en brouillon, scope perso)
-  return (
-    updateForm(fresh.id, {
-      title: template.title,
-      description: template.description,
-      display_mode: template.display_mode,
-      theme: { ...template.theme },
-      access_type: template.access_type,
-      languages: template.languages,
-      default_language: template.default_language,
-      fields: newFields,
-      logic_rules: [],
-      save_and_resume: template.save_and_resume ?? true,
-      unique_email: template.unique_email ?? true,
-      is_template: false,
-      scope: undefined,
-      template_origin_id: template.id,
-      status: 'draft'
-    }) ?? fresh
-  );
+  const updated = await updateForm(fresh.id, {
+    title: template.title,
+    description: template.description,
+    display_mode: template.display_mode,
+    theme: { ...template.theme },
+    access_type: template.access_type,
+    languages: template.languages,
+    default_language: template.default_language,
+    fields: newFields,
+    logic_rules: [],
+    save_and_resume: template.save_and_resume ?? true,
+    unique_email: template.unique_email ?? true,
+    is_template: false,
+    scope: undefined,
+    template_origin_id: template.id,
+    status: 'draft'
+  });
+
+  return updated ?? fresh;
 }
 
 function remapField(field: Field, newFormId: string): Field {

@@ -2,8 +2,10 @@
 
 import { Plus, X } from 'lucide-react';
 import type { Field } from '@/types';
-import { newOptionId } from '@/lib/store/local-forms';
+import { newOptionId } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { LIMITS } from '@/lib/constants/limits';
+import { toast } from '@/components/ui/Toast';
 
 interface Props {
   field: Field;
@@ -31,9 +33,17 @@ export function EditableMatrix({ field, onChange }: Props) {
     });
   }
   function addRow() {
+    if (rows.length >= LIMITS.MATRIX_ROWS_MAX) {
+      toast.error(`Limite de ${LIMITS.MATRIX_ROWS_MAX} lignes atteinte`);
+      return;
+    }
     onChange({ rows: [...rows, { id: newOptionId(), label: { fr: '' } }] });
   }
   function addCol() {
+    if (cols.length >= LIMITS.MATRIX_COLS_MAX) {
+      toast.error(`Limite de ${LIMITS.MATRIX_COLS_MAX} colonnes atteinte`);
+      return;
+    }
     onChange({ options: [...cols, { id: newOptionId(), label: { fr: '' } }] });
   }
   function removeRow(id: string) {
@@ -67,6 +77,7 @@ export function EditableMatrix({ field, onChange }: Props) {
                   value={col.label.fr ?? ''}
                   onChange={(e) => updateCol(col.id, e.target.value)}
                   placeholder={`Col. ${i + 1}`}
+                  maxLength={LIMITS.OPTION_LABEL_MAX}
                   className="h-7 w-full rounded bg-transparent pl-1 pr-4 text-center text-[11px] font-medium uppercase tracking-wide text-text-secondary placeholder:normal-case placeholder:tracking-normal placeholder:text-text-tertiary focus:bg-bg-elevated/60 focus:outline-none"
                 />
                 <button
@@ -101,6 +112,7 @@ export function EditableMatrix({ field, onChange }: Props) {
                   value={row.label.fr ?? ''}
                   onChange={(e) => updateRow(row.id, e.target.value)}
                   placeholder={`Ligne ${i + 1}`}
+                  maxLength={LIMITS.OPTION_LABEL_MAX}
                   className="h-7 w-full rounded bg-transparent pl-1 pr-5 text-sm text-text-primary placeholder:text-text-tertiary focus:bg-bg-elevated/60 focus:outline-none"
                 />
                 <button

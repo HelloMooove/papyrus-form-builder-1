@@ -103,7 +103,8 @@ function calculateFieldScore(field: Field, response: any): { score: number; maxS
 function calculateSingleChoiceScore(options: FieldOption[], response: string): { score: number; maxScore: number } {
   const selectedOption = options.find(opt => opt.id === response);
   const score = selectedOption?.points || 0;
-  const maxScore = Math.max(...options.map(opt => opt.points || 0));
+  const points = options.map(opt => opt.points || 0);
+  const maxScore = points.length > 0 ? Math.max(...points) : 0;
 
   return { score, maxScore };
 }
@@ -143,7 +144,8 @@ function calculateMatrixScore(field: Field, response: any): { score: number; max
   }
 
   let score = 0;
-  const maxScorePerRow = Math.max(...columns.map(col => col.points || 0));
+  const columnPoints = columns.map(col => col.points || 0);
+  const maxScorePerRow = columnPoints.length > 0 ? Math.max(...columnPoints) : 0;
   const maxScore = rows.length * maxScorePerRow;
 
   // response format: { [rowId]: string | string[] }
@@ -171,17 +173,19 @@ function calculateMatrixScore(field: Field, response: any): { score: number; max
 }
 
 /**
- * Score pour rating : mapping 1-5 étoiles vers points.
- * Par défaut : 1 étoile = 1 point, 5 étoiles = 5 points.
+ * Score pour rating : mapping 1-max étoiles vers points.
+ * Par défaut : 1 étoile = 1 point, max étoiles = max points.
  */
 function calculateRatingScore(field: Field, response: number): { score: number; maxScore: number } {
+  const maxScore = field.validation?.max ?? 5;
+
   if (typeof response !== 'number') {
-    return { score: 0, maxScore: 5 };
+    return { score: 0, maxScore };
   }
 
-  // Clamp entre 1 et 5
-  const rating = Math.max(1, Math.min(5, response));
-  return { score: rating, maxScore: 5 };
+  // Clamp entre 1 et maxScore
+  const rating = Math.max(1, Math.min(maxScore, response));
+  return { score: rating, maxScore };
 }
 
 /**

@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FileText, Pencil, Plus, Search, Send, SquareSlash, Trash2, User, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useForms } from '@/lib/store/use-forms';
-import { createForm, deleteForm } from '@/lib/store/local-forms';
+import { createForm, deleteForm } from '@/lib/store';
 import { CURRENT_USER_ID } from '@/lib/mode';
 import { cn } from '@/lib/utils';
 import type { Form, FormStatus } from '@/types';
@@ -33,6 +33,27 @@ export default function FormsListPage() {
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('mine');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string>(CURRENT_USER_ID);
+
+  // Charger l'ID utilisateur réel si en mode Supabase
+  useEffect(() => {
+    const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
+    if (!isLocal) {
+      const loadUser = async () => {
+        try {
+          const { createClient } = await import('@/lib/supabase/client');
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            setCurrentUserId(user.id);
+          }
+        } catch (error) {
+          console.error('Failed to load user session:', error);
+        }
+      };
+      loadUser();
+    }
+  }, []);
 
   // On exclut les templates de la liste des formulaires.
   const userForms = useMemo(() => allForms.filter((f) => !f.is_template), [allForms]);
@@ -42,19 +63,19 @@ export default function FormsListPage() {
     let mine = 0;
     let shared = 0;
     for (const f of userForms) {
-      if (f.created_by === CURRENT_USER_ID) mine++;
+      if (f.created_by === currentUserId) mine++;
       else shared++;
     }
     return { mine, shared };
-  }, [userForms]);
+  }, [userForms, currentUserId]);
 
   // Forms restreints au filtre propriétaire — utilisé pour les compteurs de statut + filtrage final
   const ownedForms = useMemo(
     () =>
       userForms.filter((f) =>
-        ownerFilter === 'mine' ? f.created_by === CURRENT_USER_ID : f.created_by !== CURRENT_USER_ID
+        ownerFilter === 'mine' ? f.created_by === currentUserId : f.created_by !== currentUserId
       ),
-    [userForms, ownerFilter]
+    [userForms, ownerFilter, currentUserId]
   );
 
   // Compteurs par statut (sur la sous-liste owner) — reflètent ce que l'utilisateur va voir
@@ -77,13 +98,25 @@ export default function FormsListPage() {
     );
   }, [ownedForms, statusFilter, search]);
 
-  function handleNew() {
-    const f = createForm();
-    router.push(`/forms/${f.id}/edit`);
+  async function handleNew() {
+    try {
+      const f = await createForm();
+      router.push(`/forms/${f.id}/edit`);
+    } catch (error) {
+      console.error('Failed to create form:', error);
+      // TODO: Afficher une notification d'erreur à l'utilisateur
+    }
   }
 
-  function handleDelete(id: string, title: string) {
-    if (confirm(`Supprimer "${title}" ?`)) deleteForm(id);
+  async function handleDelete(id: string, title: string) {
+    if (confirm(`Supprimer "${title}" ?`)) {
+      try {
+        await deleteForm(id);
+      } catch (error) {
+        console.error('Failed to delete form:', error);
+        // TODO: Afficher une notification d'erreur à l'utilisateur
+      }
+    }
   }
 
   return (

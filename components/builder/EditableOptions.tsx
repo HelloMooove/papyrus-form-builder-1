@@ -1,19 +1,22 @@
 'use client';
 
 import { useRef, type KeyboardEvent } from 'react';
-import { CheckSquare, ChevronDown, Circle, Plus, Square, X } from 'lucide-react';
+import { CheckSquare, ChevronDown, ChevronUp, Circle, Plus, Square, X } from 'lucide-react';
 import type { Field, FieldOption, FieldValidation, FieldType } from '@/types';
-import { newOptionId } from '@/lib/store/local-forms';
+import { newOptionId } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { LIMITS } from '@/lib/constants/limits';
+import { toast } from '@/components/ui/Toast';
 
 interface Props {
   type: Extract<FieldType, 'single_choice' | 'multiple_choice' | 'dropdown'>;
   field: Field;
   onChange: (patch: Partial<Field>) => void;
+  scoringEnabled?: boolean;
 }
 
 /** Édition inline des options d'un champ à choix — Enter ajoute, Backspace sur vide supprime. */
-export function EditableOptions({ type, field, onChange }: Props) {
+export function EditableOptions({ type, field, onChange, scoringEnabled = false }: Props) {
   const options = field.options;
   const hasOther = field.validation?.has_other ?? false;
   const otherLabel = field.validation?.other_label ?? 'Autre';
@@ -31,7 +34,23 @@ export function EditableOptions({ type, field, onChange }: Props) {
     });
   }
 
+  function updatePoints(id: string, points: number) {
+    onChange({
+      options: options.map((o) => (o.id === id ? { ...o, points } : o))
+    });
+  }
+
+  const maxOptions = type === 'dropdown'
+    ? LIMITS.DROPDOWN_OPTIONS_MAX
+    : type === 'multiple_choice'
+      ? LIMITS.MULTI_CHOICE_OPTIONS_MAX
+      : LIMITS.SINGLE_CHOICE_OPTIONS_MAX;
+
   function insertAfter(currentId: string) {
+    if (options.length >= maxOptions) {
+      toast.error(`Limite de ${maxOptions} options atteinte`);
+      return;
+    }
     const idx = options.findIndex((o) => o.id === currentId);
     if (idx === -1) return;
     const newId = newOptionId();
@@ -56,6 +75,10 @@ export function EditableOptions({ type, field, onChange }: Props) {
   }
 
   function appendOption() {
+    if (options.length >= maxOptions) {
+      toast.error(`Limite de ${maxOptions} options atteinte`);
+      return;
+    }
     const newId = newOptionId();
     onChange({ options: [...options, { id: newId, label: { fr: '' } } as FieldOption] });
     focusInput(newId);
@@ -105,8 +128,35 @@ export function EditableOptions({ type, field, onChange }: Props) {
               onChange={(e) => updateLabel(opt.id, e.target.value)}
               onKeyDown={(e) => handleKeyDown(e, opt)}
               placeholder={`Option ${i + 1}`}
+              maxLength={LIMITS.OPTION_LABEL_MAX}
               className="h-8 min-w-0 flex-1 rounded bg-transparent px-2 text-sm text-text-primary placeholder:text-text-tertiary focus:bg-bg-elevated/60 focus:outline-none"
             />
+            {scoringEnabled && (
+              <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-bg-surface px-1.5 py-0.5 shadow-sm">
+                <span className="text-xs font-semibold text-text-primary min-w-[14px] text-center">
+                  {(opt.points ?? 0) > 0 ? `+${opt.points}` : `${opt.points ?? 0}`}
+                </span>
+                <span className="text-[9px] text-text-tertiary select-none">pts</span>
+                <div className="flex flex-col ml-0.5">
+                  <button
+                    type="button"
+                    onClick={() => updatePoints(opt.id, (opt.points ?? 0) + 1)}
+                    className="rounded p-0.5 text-text-tertiary hover:bg-accent/15 hover:text-accent transition"
+                    aria-label="Augmenter les points"
+                  >
+                    <ChevronUp className="h-2 w-2" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updatePoints(opt.id, Math.max(0, (opt.points ?? 0) - 1))}
+                    className="rounded p-0.5 text-text-tertiary hover:bg-accent/15 hover:text-accent transition"
+                    aria-label="Diminuer les points"
+                  >
+                    <ChevronDown className="h-2 w-2" />
+                  </button>
+                </div>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => removeAt(opt.id)}
@@ -132,6 +182,7 @@ export function EditableOptions({ type, field, onChange }: Props) {
             value={otherLabel}
             onChange={(e) => patchValidation({ other_label: e.target.value })}
             placeholder="Autre…"
+            maxLength={LIMITS.OPTION_LABEL_MAX}
             className="h-8 w-32 shrink-0 rounded bg-transparent px-2 text-sm italic text-text-secondary placeholder:not-italic focus:bg-bg-elevated/60 focus:outline-none"
           />
           <span className="papyrus-meta truncate text-xs not-italic text-text-tertiary">

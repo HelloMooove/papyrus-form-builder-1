@@ -72,8 +72,25 @@ export interface FieldValidation {
   pattern?: string;
   accept?: string[]; // pour fichiers
   default_country?: string; // ISO 2-letter pour le champ phone
-  media_url?: string; // pour le type 'image' (URL ou data URL)
-  alignment?: 'left' | 'center' | 'right'; // pour le type 'image'
+  // Pour les champs Image, Vidéo, Fichier — modes créateur/répondant
+  creator_mode_enabled?: boolean; // Si le créateur peut ajouter du contenu
+  respondent_mode_enabled?: boolean; // Si le répondant peut uploader du contenu
+  media_url?: string; // URL ou data URL du contenu ajouté par le créateur
+  max_file_size_mb?: number; // Taille max des fichiers pour le mode répondant (1-50 MB)
+  alignment?: 'left' | 'center' | 'right'; // pour l'alignement du contenu créateur
+  image_width?: number; // Largeur de l'image en pixels (pour type 'image')
+  image_height?: number; // Hauteur de l'image en pixels (pour type 'image')
+  show_title?: boolean; // Pour 'image' et 'video' — affiche le titre au-dessus du contenu
+  original_width?: number; // Largeur d'origine de l'image (pour le reset)
+  original_height?: number; // Hauteur d'origine de l'image (pour le reset)
+  ratio_locked?: boolean; // Pour 'image' — verrouillage du ratio d'aspect (défaut: true)
+  image_position_x?: number; // Position X de l'image sur le canvas (en px)
+  image_position_y?: number; // Position Y de l'image sur le canvas (en px)
+  // Pour les champs réponse courte avec type numérique
+  response_type?: 'text' | 'integer' | 'decimal'; // Type de réponse pour short_text
+  max_decimals?: number; // Nombre max de décimales pour type decimal (1-3)
+  unit?: 'none' | 'euro' | 'dollar' | 'pound' | 'rupee' | 'mur' | 'kg' | 'g' | 'lb' | 'cm' | 'm' | 'ft' | 'in' | 'miles' | 'arpent' | 'percent'; // Unité pour les nombres
+  user_can_choose_unit?: boolean; // Si l'utilisateur peut choisir l'unité
   // Pour les champs bannière et logo
   banner_fit?: 'cover' | 'contain'; // pour 'banner' — mode d'affichage
   banner_position_x?: number; // pour 'banner' — position horizontale (0-100)
@@ -110,6 +127,8 @@ export interface FieldStyle {
   label_align?: TextAlign;
   label_italic?: boolean;
   font_family?: FontFamily;
+  icon_enabled?: boolean;
+  icon_value?: string;
 }
 
 export type LayoutWidth = 'full' | 'half';
@@ -191,11 +210,17 @@ export interface FormTheme {
   text_color?: string;
   button_style?: 'filled' | 'outline' | 'ghost';
   dark_mode?: boolean;
+  fields_icons_enabled?: boolean;
+  /** Libellé personnalisé du score (défaut: "Score") */
+  score_label?: string;
+  /** Description personnalisée du score (défaut: "Basé sur vos réponses à ce formulaire") */
+  score_description?: string;
 }
 
 export interface Form {
   id: string;
   team_id: string;
+  workspace_id?: string;
   created_by?: string;
   title: string;
   slug: string;
@@ -310,3 +335,27 @@ export interface FormStats {
   avg_time_seconds: number;
   responses_by_day: { date: string; count: number }[];
 }
+
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
+export type WorkspaceScope = 'personal' | 'team';
+
+export interface WorkspaceMember {
+  user_id: string;
+  workspace_id: string;
+  role: WorkspaceRole;
+  joined_at: string;
+  name?: string;
+  email?: string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  scope: WorkspaceScope;
+  is_deletable: boolean;
+  created_by: string;
+  created_at: string;
+  members?: WorkspaceMember[];
+  form_count?: number;
+}
+

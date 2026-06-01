@@ -24,7 +24,7 @@ export function Header() {
 
   return (
     <header className="flex h-14 items-center border-b border-border bg-bg-base px-8">
-      <nav className="flex items-center gap-1.5 text-sm">
+      <nav className="flex items-center gap-1.5 text-xl">
         {segments.length === 0 && <span className="text-text-primary">Accueil</span>}
         {segments.map((seg, i) => {
           const label = LABELS[seg] ?? seg;

@@ -132,14 +132,58 @@ function SettingsTab({ form, onFormChange }: { form: Form; onFormChange: (patch:
     <div className="space-y-6">
       <div className="space-y-3">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-          Sauvegarde et reprise
+          Icônes du formulaire
         </h4>
         <Switch
-          checked={form.save_and_resume ?? false}
-          onChange={(save_and_resume) => onFormChange({ save_and_resume })}
-          label="Permettre la reprise d'une réponse en cours"
-          description="Les réponses en cours sont enregistrées dans le navigateur. Si le répondant revient, on lui propose de reprendre où il s'était arrêté. Aucune donnée n'est envoyée tant que le formulaire n'est pas soumis."
+          checked={form.theme.fields_icons_enabled ?? false}
+          onChange={(v) => onFormChange({ theme: { ...form.theme, fields_icons_enabled: v } })}
+          label="Afficher les icônes"
+          description="Ajoute une icône à gauche de chaque question"
         />
+      </div>
+
+      <div className="space-y-3 border-t border-dashed border-border pt-5">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Système de scoring
+        </h4>
+        <Switch
+          checked={form.scoring_enabled ?? false}
+          onChange={(scoring_enabled) => onFormChange({ scoring_enabled })}
+          label="Activer le système de points"
+          description="Permet d'attribuer des points aux réponses pour calculer un score de maturité."
+        />
+        {form.scoring_enabled && (
+          <>
+            <Switch
+              checked={form.show_score_to_respondent ?? false}
+              onChange={(show_score_to_respondent) => onFormChange({ show_score_to_respondent })}
+              label="Afficher le score final au répondant"
+              description="Le répondant verra son score total à la fin du formulaire."
+            />
+            <div className="mt-3 gap-2 space-y-2">
+              <div>
+                <label className="block text-xs text-text-secondary mb-1" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Nom du score
+                </label>
+                <Input
+                  value={form.theme.score_label ?? ''}
+                  onChange={(e) => onFormChange({ theme: { ...form.theme, score_label: e.target.value } })}
+                  placeholder="Score"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Description
+                </label>
+                <Input
+                  value={form.theme.score_description ?? ''}
+                  onChange={(e) => onFormChange({ theme: { ...form.theme, score_description: e.target.value } })}
+                  placeholder="Basé sur vos réponses à ce formulaire"
+                />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="space-y-3 border-t border-dashed border-border pt-5">
@@ -161,22 +205,14 @@ function SettingsTab({ form, onFormChange }: { form: Form; onFormChange: (patch:
 
       <div className="space-y-3 border-t border-dashed border-border pt-5">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-          Système de scoring
+          Sauvegarde et reprise
         </h4>
         <Switch
-          checked={form.scoring_enabled ?? false}
-          onChange={(scoring_enabled) => onFormChange({ scoring_enabled })}
-          label="Activer le système de points"
-          description="Permet d'attribuer des points aux réponses pour calculer un score de maturité."
+          checked={form.save_and_resume ?? false}
+          onChange={(save_and_resume) => onFormChange({ save_and_resume })}
+          label="Permettre la reprise d'une réponse en cours"
+          description="Les réponses en cours sont enregistrées dans le navigateur. Si le répondant revient, on lui propose de reprendre où il s'était arrêté. Aucune donnée n'est envoyée tant que le formulaire n'est pas soumis."
         />
-        {form.scoring_enabled && (
-          <Switch
-            checked={form.show_score_to_respondent ?? false}
-            onChange={(show_score_to_respondent) => onFormChange({ show_score_to_respondent })}
-            label="Afficher le score final au répondant"
-            description="Le répondant verra son score total à la fin du formulaire."
-          />
-        )}
       </div>
     </div>
   );
@@ -534,11 +570,20 @@ function FormStyleTab({
 
       <StyleControls style={current} onChange={handleChange} />
 
+      <div className="space-y-3 border-t border-dashed border-border pt-5">
+        <Switch
+          checked={theme.fields_icons_enabled ?? false}
+          onChange={(v) => onChange({ fields_icons_enabled: v })}
+          label="Afficher les icônes"
+          description="Ajoute une icône à gauche de chaque question"
+        />
+      </div>
+
       {hasStyle && (
         <button
           type="button"
           onClick={() => onChange({ field_style: undefined })}
-          className="w-full rounded-md border border-dashed border-border-strong py-2 text-xs text-text-secondary hover:border-danger hover:text-danger"
+          className="w-full rounded-md border border-dashed border-border-strong py-2 text-xs text-text-secondary hover:border-danger hover:text-danger mt-3"
         >
           Réinitialiser le style global
         </button>
@@ -557,12 +602,23 @@ const MOOOVE_ACCENTS = [
   { value: '#2AC2DE', name: 'Cyan', description: 'Énergie, mouvement (CTA)' }
 ];
 
+const PRESET_ACCENTS = [
+  '#052139', // Navy
+  '#3C5EAB', // Electric Blue
+  '#2AC2DE', // Cyan
+  '#F6923E', // Amber
+  '#C0392B', // Coral
+  '#10B981', // Emerald
+  '#8B5CF6', // Purple
+  '#EC4899'  // Pink
+];
+
 function AccentTab({ theme, onChange }: { theme: FormTheme; onChange: (patch: Partial<FormTheme>) => void }) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-text-tertiary">
-        Couleur d&apos;identité Mooove pour les boutons et les éléments actifs. Choix restreint pour
-        garder la cohérence de marque.
+        Couleur d&apos;identité Mooove pour les boutons et les éléments actifs. Choisissez l&apos;un de nos presets
+        ou configurez votre propre couleur personnalisée.
       </p>
       <div className="space-y-2">
         {MOOOVE_ACCENTS.map((c) => {
@@ -589,6 +645,49 @@ function AccentTab({ theme, onChange }: { theme: FormTheme; onChange: (patch: Pa
             </button>
           );
         })}
+      </div>
+
+      {/* Couleur personnalisée */}
+      <div className="border-t border-dashed border-border pt-4 mt-4">
+        <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">
+          Couleur personnalisée
+        </label>
+        
+        {/* Palette rapide */}
+        <div className="grid grid-cols-8 gap-1.5 mb-3">
+          {PRESET_ACCENTS.map((c) => {
+            const active = theme.accent === c;
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => onChange({ accent: c })}
+                className={cn(
+                  'h-7 w-7 rounded-md border transition',
+                  active ? 'ring-2 ring-accent ring-offset-1 ring-offset-bg-surface' : 'border-border'
+                )}
+                style={{ backgroundColor: c }}
+                aria-label={`Couleur ${c}`}
+              />
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={theme.accent ?? '#052139'}
+            onChange={(e) => onChange({ accent: e.target.value })}
+            className="h-9 w-12 cursor-pointer rounded border border-border-strong bg-bg-base"
+            aria-label="Sélecteur de couleur d'accent"
+          />
+          <Input
+            value={theme.accent ?? ''}
+            onChange={(e) => onChange({ accent: e.target.value })}
+            placeholder="#052139"
+            className="flex-1 font-mono text-xs"
+          />
+        </div>
       </div>
     </div>
   );

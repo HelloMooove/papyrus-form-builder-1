@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { formatPhoneNumber, validatePhoneNumber, getPhonePlaceholder } from '@/lib/constants/phone-formats';
 
 const COUNTRIES = [
   { code: 'MU', name: 'Maurice',           dial: '+230', flag: '🇲🇺' },
@@ -118,14 +119,50 @@ interface PhoneFieldProps {
   name?: string;
   required?: boolean;
   placeholder?: string;
+  value?: string;
+  onChange?: (val: string) => void;
 }
 
-export function PhoneField({ name, required, placeholder }: PhoneFieldProps) {
+export function PhoneField({ name, required, placeholder, value, onChange }: PhoneFieldProps) {
   const [selected, setSelected] = useState(COUNTRIES[0]); // Maurice par défaut
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [phone, setPhone] = useState('');
+  const [localPhone, setLocalPhone] = useState('');
+  const phone = value !== undefined ? value : localPhone;
+  const [rawPhone, setRawPhone] = useState(''); // Numéro brut pour la validation
+  const [touched, setTouched] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Validation du numéro selon le pays
+  const isValidPhone = !touched || !rawPhone || validatePhoneNumber(rawPhone, selected.code);
+  const errorMessage = touched && rawPhone && !isValidPhone
+    ? `Format invalide pour ${selected.name}. Exemple: ${getPhonePlaceholder(selected.code)}`
+    : null;
+
+  // Formatage en temps réel
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    const digitsOnly = val.replace(/\D/g, '');
+    setRawPhone(digitsOnly);
+    const formatted = formatPhoneNumber(digitsOnly, selected.code);
+    if (onChange) {
+      onChange(formatted);
+    } else {
+      setLocalPhone(formatted);
+    }
+  };
+
+  // Reset du numéro quand le pays change
+  useEffect(() => {
+    if (rawPhone) {
+      const formatted = formatPhoneNumber(rawPhone, selected.code);
+      if (onChange) {
+        onChange(formatted);
+      } else {
+        setLocalPhone(formatted);
+      }
+    }
+  }, [selected.code, rawPhone]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -145,7 +182,7 @@ export function PhoneField({ name, required, placeholder }: PhoneFieldProps) {
       {/* CHAMP PRINCIPAL */}
       <div style={{
         display: 'flex',
-        border: '1px solid var(--papyrus-border)',
+        border: `1px solid ${errorMessage ? 'var(--error-border, #dc2626)' : 'var(--papyrus-border)'}`,
         borderRadius: '8px',
         overflow: 'visible',
         background: 'var(--papyrus-surface)'
@@ -177,8 +214,9 @@ export function PhoneField({ name, required, placeholder }: PhoneFieldProps) {
           name={name}
           type="tel"
           value={phone}
-          onChange={e => setPhone(e.target.value)}
-          placeholder={placeholder || "ex: 57 12 34 56"}
+          onChange={handlePhoneChange}
+          onBlur={() => setTouched(true)}
+          placeholder={placeholder || getPhonePlaceholder(selected.code)}
           required={required}
           style={{
             flex: 1,
@@ -187,10 +225,23 @@ export function PhoneField({ name, required, placeholder }: PhoneFieldProps) {
             background: 'transparent',
             fontSize: '14px',
             outline: 'none',
-            color: 'var(--text-primary)'
+            color: 'var(--text-primary)',
+            ...(errorMessage && { borderColor: 'red' })
           }}
         />
       </div>
+
+      {/* MESSAGE D'ERREUR */}
+      {errorMessage && (
+        <p style={{
+          color: 'var(--error-text, #dc2626)',
+          fontSize: '12px',
+          marginTop: '4px',
+          marginLeft: '2px'
+        }}>
+          {errorMessage}
+        </p>
+      )}
 
       {/* DROPDOWN PAYS */}
       {isOpen && (
@@ -216,7 +267,7 @@ export function PhoneField({ name, required, placeholder }: PhoneFieldProps) {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher un pays..."
+              placeholder="Pays, code ou indicatif..."
               style={{
                 width: '100%',
                 padding: '8px 10px',
@@ -235,7 +286,8 @@ export function PhoneField({ name, required, placeholder }: PhoneFieldProps) {
             {COUNTRIES
               .filter(c =>
                 c.name.toLowerCase().includes(search.toLowerCase()) ||
-                c.dial.includes(search)
+                c.dial.includes(search) ||
+                c.code.toLowerCase().includes(search.toLowerCase())
               )
               .map(country => (
                 <button

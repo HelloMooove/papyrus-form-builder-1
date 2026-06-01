@@ -4,7 +4,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Columns2, Copy, GripVertical, Square, Trash2 } from 'lucide-react';
 import type { CSSProperties } from 'react';
-import type { Field, FieldStyle, MultilingualText } from '@/types';
+import type { Field, FieldStyle, FormTheme, MultilingualText } from '@/types';
 import { cn } from '@/lib/utils';
 import { FIELD_META } from '@/lib/field-meta';
 import { AutoTextarea } from '@/components/ui/AutoTextarea';
@@ -13,6 +13,7 @@ import { FieldRenderer } from './FieldRenderer';
 import { EditableOptions } from './EditableOptions';
 import { EditableMatrix } from './EditableMatrix';
 import { LIMITS } from '@/lib/constants/limits';
+import { getFieldIcon, isIconVisible } from '@/lib/field-icons';
 
 interface Props {
   field: Field;
@@ -22,6 +23,8 @@ interface Props {
   globalStyle?: FieldStyle;
   /** Couleur de fond du bloc (depuis form.theme.field_bg_color). */
   cardBg?: string;
+  theme: FormTheme;
+  scoringEnabled?: boolean;
   onSelect: () => void;
   onChange: (patch: Partial<Field>) => void;
   onDuplicate: () => void;
@@ -86,6 +89,8 @@ function FieldCard({
   selected,
   globalStyle,
   cardBg,
+  theme,
+  scoringEnabled,
   onSelect,
   onChange,
   onDuplicate,
@@ -207,7 +212,41 @@ function FieldCard({
 
       {/* Question — éditable inline (titre optionnel pour les statements) */}
       {!isLayout || showTitleForMedia ? (
-        <div className="mb-1.5 flex items-baseline gap-2">
+        <div className="mb-1.5 flex items-center gap-2">
+          {isIconVisible(field, theme) && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: 'var(--bg-overlay)',
+                border: '0.5px solid var(--border)',
+                marginRight: 6,
+                flexShrink: 0,
+              }}
+            >
+              {field.style?.icon_value?.startsWith('ti-') ? (
+                <i
+                  className={`ti ${field.style.icon_value}`}
+                  aria-hidden="true"
+                  style={{ fontSize: 20, color: 'var(--accent)' }}
+                />
+              ) : field.style?.icon_value ? (
+                <span style={{ fontSize: 22, lineHeight: 1 }}>
+                  {field.style.icon_value}
+                </span>
+              ) : (
+                <i
+                  className={`ti ${getFieldIcon(field)}`}
+                  aria-hidden="true"
+                  style={{ fontSize: 20, color: 'var(--accent)' }}
+                />
+              )}
+            </span>
+          )}
           {(!isStatement || showTitleForMedia) && (
             <span className="papyrus-numeral shrink-0 text-sm">{romanNumeral(index + 1)}.</span>
           )}
@@ -232,17 +271,53 @@ function FieldCard({
         </div>
       ) : (
         !isImage && !isVideo && (
-          <AutoTextarea
-            value={field.label.fr ?? ''}
-            onChange={(e) => patchText('label', e.target.value)}
-            placeholder={isSectionBreak ? 'Titre de la section' : 'Légende (optionnelle)'}
-            style={labelInlineStyle}
-            maxLength={LIMITS.SECTION_TITLE_MAX}
-            className={cn(
-              '-mx-1 mb-1.5 w-full rounded bg-transparent px-1 leading-snug text-text-primary placeholder:text-text-tertiary focus:bg-bg-elevated/50 focus:outline-none',
-              labelClass
+          <div className="mb-1.5 flex items-center gap-2">
+            {isIconVisible(field, theme) && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  background: 'var(--bg-overlay)',
+                  border: '0.5px solid var(--border)',
+                  marginRight: 6,
+                  flexShrink: 0,
+                }}
+              >
+                {field.style?.icon_value?.startsWith('ti-') ? (
+                  <i
+                    className={`ti ${field.style.icon_value}`}
+                    aria-hidden="true"
+                    style={{ fontSize: 20, color: 'var(--accent)' }}
+                  />
+                ) : field.style?.icon_value ? (
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>
+                    {field.style.icon_value}
+                  </span>
+                ) : (
+                  <i
+                    className={`ti ${getFieldIcon(field)}`}
+                    aria-hidden="true"
+                    style={{ fontSize: 20, color: 'var(--accent)' }}
+                  />
+                )}
+              </span>
             )}
-          />
+            <AutoTextarea
+              value={field.label.fr ?? ''}
+              onChange={(e) => patchText('label', e.target.value)}
+              placeholder={isSectionBreak ? 'Titre de la section' : 'Légende (optionnelle)'}
+              style={labelInlineStyle}
+              maxLength={LIMITS.SECTION_TITLE_MAX}
+              className={cn(
+                '-mx-1 mb-1.5 w-full rounded bg-transparent px-1 leading-snug text-text-primary placeholder:text-text-tertiary focus:bg-bg-elevated/50 focus:outline-none',
+                labelClass
+              )}
+            />
+          </div>
         )
       )}
 
@@ -265,6 +340,7 @@ function FieldCard({
           type={field.type as 'single_choice' | 'multiple_choice' | 'dropdown'}
           field={field}
           onChange={onChange}
+          scoringEnabled={scoringEnabled}
         />
       ) : field.type === 'matrix' ? (
         <EditableMatrix field={field} onChange={onChange} />

@@ -1,17 +1,23 @@
 'use client';
 
+import type { Field } from '@/types';
+
 interface PhoneFieldProps {
   placeholder?: string;
+  field?: Field;
+  onChange?: (patch: Partial<Field>) => void;
 }
 
-export function PhoneField({ placeholder }: PhoneFieldProps) {
+export function PhoneField({ placeholder, field, onChange }: PhoneFieldProps) {
+  const isEditing = !!onChange && !!field;
+
   return (
     <div style={{ position: 'relative' }}>
 
       {/* CHAMP PRINCIPAL - Version statique pour le builder */}
       <div style={{
         display: 'flex',
-        border: '1px solid var(--papyrus-border)',
+        border: isEditing ? '1px dashed var(--papyrus-border)' : '1px solid var(--papyrus-border)',
         borderRadius: '8px',
         overflow: 'visible',
         background: 'var(--papyrus-surface)'
@@ -34,22 +40,43 @@ export function PhoneField({ placeholder }: PhoneFieldProps) {
           <span style={{ color: 'var(--text-secondary)' }}>+230</span>
         </div>
 
-        {/* INPUT NUMÉRO — disabled en mode builder */}
-        <input
-          type="tel"
-          disabled
-          placeholder={placeholder || "57 12 34 56"}
-          style={{
-            flex: 1,
-            padding: '10px 12px',
-            border: 'none',
-            background: 'transparent',
-            fontSize: '14px',
-            outline: 'none',
-            color: 'var(--text-tertiary)',
-            cursor: 'default'
-          }}
-        />
+        {/* INPUT NUMÉRO — éditable si on est en mode édition, sinon statique/disabled */}
+        {isEditing ? (
+          <input
+            type="text"
+            value={field.placeholder?.fr ?? ''}
+            onChange={(e) => {
+              const current = field.placeholder ?? {};
+              onChange({ placeholder: { ...current, fr: e.target.value } });
+            }}
+            placeholder={placeholder || "57 12 34 56"}
+            style={{
+              flex: 1,
+              padding: '10px 12px',
+              border: 'none',
+              background: 'transparent',
+              fontSize: '14px',
+              outline: 'none',
+              color: 'var(--text-tertiary)',
+            }}
+          />
+        ) : (
+          <input
+            type="tel"
+            disabled
+            placeholder={placeholder || "57 12 34 56"}
+            style={{
+              flex: 1,
+              padding: '10px 12px',
+              border: 'none',
+              background: 'transparent',
+              fontSize: '14px',
+              outline: 'none',
+              color: 'var(--text-tertiary)',
+              cursor: 'default'
+            }}
+          />
+        )}
       </div>
     </div>
   );

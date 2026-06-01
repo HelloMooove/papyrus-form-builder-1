@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCount } from '@/lib/utils';
 import { useForms } from '@/lib/store/use-forms';
-import { createForm } from '@/lib/store/local-forms';
+import { createForm } from '@/lib/store';
 import { cloneTemplate, listTemplatesByScope } from '@/lib/store/templates';
 import { FAVORITES_EVENT, listFavorites } from '@/lib/store/favorites';
 import type { Form } from '@/types';
@@ -60,14 +60,24 @@ export default function DashboardHome() {
   // Réponses du mois — placeholder en attendant la collecte
   const responsesThisMonth = '—';
 
-  function handleNew() {
-    const f = createForm();
-    router.push(`/forms/${f.id}/edit`);
+  async function handleNew() {
+    try {
+      const f = await createForm();
+      router.push(`/forms/${f.id}/edit`);
+    } catch (error) {
+      console.error('Failed to create form:', error);
+      // TODO: Afficher une notification d'erreur à l'utilisateur
+    }
   }
 
-  function handleUseTemplate(template: Form) {
-    const cloned = cloneTemplate(template);
-    router.push(`/forms/${cloned.id}/edit`);
+  async function handleUseTemplate(template: Form) {
+    try {
+      const cloned = await cloneTemplate(template);
+      router.push(`/forms/${cloned.id}/edit`);
+    } catch (error) {
+      console.error('Failed to clone template:', error);
+      // TODO: Afficher une notification d'erreur à l'utilisateur
+    }
   }
 
   return (

@@ -52,18 +52,10 @@ export const FIELD_META: Record<FieldType, FieldMeta> = {
 };
 
 export const FIELD_CATEGORIES: { title: string; types: FieldType[] }[] = [
-  { title: 'Texte', types: ['short_text', 'long_text', 'email', 'phone', 'number', 'url'] },
+  { title: 'Texte', types: ['short_text', 'long_text', 'email', 'phone', 'url'] },
   { title: 'Choix', types: ['single_choice', 'multiple_choice', 'dropdown'] },
   { title: 'Évaluation', types: ['rating', 'nps', 'matrix'] },
   { title: 'Données', types: ['date', 'file'] },
   { title: 'Mise en page', types: ['section_break', 'statement', 'image', 'video'] }
 ];
 
-/** Limite par défaut de caractères pour les champs texte (ne dépend pas de l'utilisateur). */
-export const DEFAULT_MAX_LENGTH: Record<'short_text' | 'long_text' | 'email' | 'phone' | 'url', number> = {
-  short_text: 200,
-  long_text: 2000,
-  email: 254,
-  phone: 20,
-  url: 2048
-};

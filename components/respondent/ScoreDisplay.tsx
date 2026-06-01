@@ -8,13 +8,15 @@ import { cn } from '@/lib/utils';
 interface Props {
   scoreResult: ScoreResult;
   className?: string;
+  scoreLabel?: string;
+  scoreDescription?: string;
 }
 
 /**
  * Affiche le résultat final du score de maturité au répondant.
  * Utilisé uniquement si le créateur a activé l'affichage du score.
  */
-export function ScoreDisplay({ scoreResult, className }: Props) {
+export function ScoreDisplay({ scoreResult, className, scoreLabel, scoreDescription }: Props) {
   const { title, description, color } = getScoreMessage(scoreResult.percentage);
 
   return (
@@ -27,10 +29,10 @@ export function ScoreDisplay({ scoreResult, className }: Props) {
         <div className="flex-1">
           <div className="mb-3">
             <h3 className="mb-1 font-display text-xl font-medium text-text-primary">
-              Votre score de maturité
+              {scoreLabel ?? 'Votre score de maturité'}
             </h3>
             <p className="text-sm text-text-secondary">
-              Basé sur vos réponses à ce formulaire
+              {scoreDescription ?? 'Basé sur vos réponses à ce formulaire'}
             </p>
           </div>
 

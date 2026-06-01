@@ -1,3 +1,5 @@
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -78,6 +80,8 @@
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-family: var(--font-body);
+    font-size: 1.25rem; /* 20px de base - taille Tally */
+    line-height: 1.6;
   }
   h1,
   h2 {

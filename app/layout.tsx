@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { DM_Sans } from 'next/font/google';
 import './globals.css';
+import { ToastContainer } from '@/components/ui/Toast';
 
 // DM Sans = le substitut libre d'Aktiv Grotesk (la police de l'identité Mooove).
 // Aktiv Grotesk est sur Adobe Fonts (paywall). Si un kit Typekit est chargé côté projet,
@@ -21,7 +22,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={aktivSub.variable} suppressHydrationWarning>
-      <body className="min-h-screen bg-bg-base text-text-primary antialiased">{children}</body>
+      <body className="min-h-screen bg-bg-base text-text-primary antialiased">
+        {children}
+        <ToastContainer />
+      </body>
     </html>
   );
 }
+

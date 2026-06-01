@@ -2,7 +2,7 @@
 
 import { Plus, Trash2, Award } from 'lucide-react';
 import type { Field, Form, LogicCondition, LogicAction, LogicRule, DisplayMode } from '@/types';
-import { addLogicRule, deleteLogicRule, updateLogicRule } from '@/lib/store/local-forms';
+import { addLogicRule, deleteLogicRule, updateLogicRule } from '@/lib/store';
 import { FIELD_META } from '@/lib/field-meta';
 import { getFieldsInSameSection, getSections } from '@/lib/sections';
 
@@ -55,9 +55,9 @@ function getFieldScoreInfo(field: Field): { minPoints: number; maxPoints: number
 
     case 'matrix':
       const rows = field.rows || [];
-      const maxPerRow = Math.max(...points);
+      const maxPerRow = points.length > 0 ? Math.max(...points) : 0;
       return {
-        minPoints: Math.min(...points),
+        minPoints: points.length > 0 ? Math.min(...points) : 0,
         maxPoints: maxPerRow * rows.length,
         hasScoring: true
       };
@@ -122,7 +122,7 @@ export function LogicEditor({ form, field }: Props) {
     addLogicRule(form.id, {
       source_field_id: field.id,
       condition: 'equals',
-      condition_value: field.options[0]?.id ?? '',
+      condition_value: (field.options || [])[0]?.id ?? '',
       action_type: defaultAction,
       target_field_id: initialTargets[0]?.id,
       rule_order: rules.length
@@ -254,7 +254,7 @@ function RuleCard({
             <Select
               value={rule.condition_value}
               onChange={(v) => onChange({ condition_value: v })}
-              options={sourceField.options.map((o) => ({
+              options={(sourceField.options || []).map((o) => ({
                 value: o.id,
                 label: o.label.fr || 'Option sans titre'
               }))}

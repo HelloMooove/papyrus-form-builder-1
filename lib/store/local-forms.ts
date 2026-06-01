@@ -21,7 +21,7 @@ function emptyMultilingual(value = ''): MultilingualText {
 function cleanObsoleteFields(form: Form): Form {
   if (!form.fields) return form;
   const cleanedFields = form.fields
-    .filter((field) => field.type !== 'banner' && field.type !== 'logo')
+    .filter((field) => (field.type as string) !== 'banner' && (field.type as string) !== 'logo')
     .map((field, index) => ({ ...field, field_order: index }));
 
   return { ...form, fields: cleanedFields };
@@ -59,11 +59,12 @@ export function getForm(id: string): Form | null {
   return readAll().find((f) => f.id === id) ?? null;
 }
 
-export function createForm(title = 'Nouveau formulaire'): Form {
+export function createForm(title = 'Nouveau formulaire', workspace_id?: string): Form {
   const now = new Date().toISOString();
   const form: Form = {
     id: uuid(),
     team_id: 'local',
+    workspace_id,
     created_by: 'local-user',
     title,
     slug: uniqueSlug(title),
@@ -117,45 +118,48 @@ export function deleteForm(id: string): void {
 export function addField(
   formId: string,
   type: Field['type'],
-  label = 'Nouvelle question'
+  label = 'Nouvelle question',
+  customField?: Field
 ): Form | null {
   const form = getForm(formId);
   if (!form) return null;
   const fields = form.fields ?? [];
-  const newField: Field = {
-    id: uuid(),
-    form_id: formId,
-    type,
-    label: emptyMultilingual(label),
-    description: emptyMultilingual(''),
-    placeholder: emptyMultilingual(''),
-    options:
-      type === 'single_choice' || type === 'multiple_choice' || type === 'dropdown'
-        ? [
-            { id: uuid(), label: emptyMultilingual('') },
-            { id: uuid(), label: emptyMultilingual('') }
-          ]
-        : type === 'matrix'
-          ? [
-              { id: uuid(), label: emptyMultilingual('Pas du tout') },
-              { id: uuid(), label: emptyMultilingual('Plutôt non') },
-              { id: uuid(), label: emptyMultilingual('Neutre') },
-              { id: uuid(), label: emptyMultilingual('Plutôt oui') },
-              { id: uuid(), label: emptyMultilingual('Tout à fait') }
-            ]
-          : [],
-    rows:
-      type === 'matrix'
-        ? [
-            { id: uuid(), label: emptyMultilingual('Critère 1') },
-            { id: uuid(), label: emptyMultilingual('Critère 2') },
-            { id: uuid(), label: emptyMultilingual('Critère 3') }
-          ]
-        : undefined,
-    required: false,
-    field_order: fields.length,
-    validation: type === 'matrix' ? { matrix_mode: 'single' } : {}
-  };
+  const newField: Field = customField
+    ? { ...customField, form_id: formId, field_order: fields.length }
+    : {
+        id: uuid(),
+        form_id: formId,
+        type,
+        label: emptyMultilingual(label),
+        description: emptyMultilingual(''),
+        placeholder: emptyMultilingual(''),
+        options:
+          type === 'single_choice' || type === 'multiple_choice' || type === 'dropdown'
+            ? [
+                { id: uuid(), label: emptyMultilingual('') },
+                { id: uuid(), label: emptyMultilingual('') }
+              ]
+            : type === 'matrix'
+              ? [
+                  { id: uuid(), label: emptyMultilingual('Pas du tout') },
+                  { id: uuid(), label: emptyMultilingual('Plutôt non') },
+                  { id: uuid(), label: emptyMultilingual('Neutre') },
+                  { id: uuid(), label: emptyMultilingual('Plutôt oui') },
+                  { id: uuid(), label: emptyMultilingual('Tout à fait') }
+                ]
+              : [],
+        rows:
+          type === 'matrix'
+            ? [
+                { id: uuid(), label: emptyMultilingual('Critère 1') },
+                { id: uuid(), label: emptyMultilingual('Critère 2') },
+                { id: uuid(), label: emptyMultilingual('Critère 3') }
+              ]
+            : undefined,
+        required: false,
+        field_order: fields.length,
+        validation: type === 'matrix' ? { matrix_mode: 'single' } : {}
+      };
   return updateForm(formId, { fields: [...fields, newField] });
 }
 
@@ -191,7 +195,11 @@ export function reorderFields(formId: string, orderedIds: string[]): Form | null
 }
 
 /** Duplique un champ et l'insère juste après l'original. Renvoie l'ID du nouveau champ. */
-export function duplicateField(formId: string, fieldId: string): { form: Form; newFieldId: string } | null {
+export function duplicateField(
+  formId: string,
+  fieldId: string,
+  customField?: Field
+): { form: Form; newFieldId: string } | null {
   const form = getForm(formId);
   if (!form) return null;
   const fields = form.fields ?? [];
@@ -199,13 +207,15 @@ export function duplicateField(formId: string, fieldId: string): { form: Form; n
   if (idx === -1) return null;
 
   const original = fields[idx];
-  const newId = uuid();
-  const copy: Field = {
-    ...original,
-    id: newId,
-    options: original.options.map((o) => ({ ...o, id: uuid() })),
-    field_order: idx + 1
-  };
+  const newId = customField ? customField.id : uuid();
+  const copy: Field = customField
+    ? { ...customField, form_id: formId }
+    : {
+        ...original,
+        id: newId,
+        options: original.options.map((o) => ({ ...o, id: uuid() })),
+        field_order: idx + 1
+      };
 
   const next = [...fields];
   next.splice(idx + 1, 0, copy);
@@ -318,4 +328,49 @@ export function deleteLogicRule(formId: string, ruleId: string): Form | null {
   if (!form) return null;
   const next = (form.logic_rules ?? []).filter((r) => r.id !== ruleId);
   return updateForm(formId, { logic_rules: next });
+}
+
+// ============================================================================
+// Workspaces (Teams) & Member Management Mock
+// ============================================================================
+
+export function createTeam(name: string): any {
+  const team = {
+    id: `local-team-${Date.now()}`,
+    name,
+    plan: 'free',
+    created_at: new Date().toISOString()
+  };
+  // Définir le cookie actif sur le client
+  if (typeof document !== 'undefined') {
+    document.cookie = `papyrus:active-team-id=${team.id}; path=/; max-age=31536000; SameSite=Lax`;
+  }
+  return team;
+}
+
+export function updateTeamName(teamId: string, name: string): void {
+  // Mock
+}
+
+export function listTeamMembers(teamId: string): any[] {
+  return [
+    {
+      user_id: 'local-user',
+      role: 'admin',
+      joined_at: new Date().toISOString(),
+      email: 'local@papyrus.dev'
+    }
+  ];
+}
+
+export function addTeamMember(teamId: string, email: string, role: 'admin' | 'member' | 'reader' = 'member'): void {
+  // Mock
+}
+
+export function updateTeamMemberRole(teamId: string, userId: string, role: 'admin' | 'member' | 'reader'): void {
+  // Mock
+}
+
+export function deleteTeamMember(teamId: string, userId: string): void {
+  // Mock
 }

@@ -3,13 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Monitor, Smartphone, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { Field, FieldStyle, Form } from '@/types';
+import type { Field, FieldStyle, Form, FormTheme } from '@/types';
 import { FieldRenderer } from './FieldRenderer';
 import { FormHeader } from './FormHeader';
 import { SaveResumeBar } from './SaveResumeBar';
 import { getBackgroundStyle, getBannerStyle } from '@/lib/theme';
+import { getFieldIcon, isIconVisible } from '@/lib/field-icons';
 import { buildPages } from '@/lib/sections';
 import { cn } from '@/lib/utils';
+import { useFormScore } from '@/lib/hooks/useFormScore';
+import type { ScoreResult } from '@/lib/scoring';
+import { ScoreDisplay } from '@/components/respondent/ScoreDisplay';
 
 interface Props {
   form: Form;
@@ -22,6 +26,15 @@ export function PreviewModal({ form, onClose }: Props) {
   const [device, setDevice] = useState<Device>('desktop');
   const mode = form.display_mode ?? 'sections';
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Hook pour gérer le scoring en temps réel
+  const {
+    responses,
+    scoreResult,
+    updateResponse,
+    scoringEnabled,
+    showScoreToRespondent
+  } = useFormScore(form);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -55,11 +68,32 @@ export function PreviewModal({ form, onClose }: Props) {
         {form.save_and_resume && <SaveResumeBar formId={form.id} containerRef={contentRef} />}
         <div ref={contentRef} className="flex-1 overflow-y-auto" style={getBackgroundStyle(form.theme)}>
           {mode === 'sections' ? (
-            <SectionsPreview form={form} device={device} />
+            <SectionsPreview
+              form={form}
+              device={device}
+              responses={responses}
+              updateResponse={updateResponse}
+              scoreResult={scoreResult!}
+              showScoreToRespondent={showScoreToRespondent}
+            />
           ) : mode === 'typeform' ? (
-            <TypeformPreview form={form} device={device} />
+            <TypeformPreview
+              form={form}
+              device={device}
+              responses={responses}
+              updateResponse={updateResponse}
+              scoreResult={scoreResult!}
+              showScoreToRespondent={showScoreToRespondent}
+            />
           ) : (
-            <ScrollPreview form={form} device={device} />
+            <ScrollPreview
+              form={form}
+              device={device}
+              responses={responses}
+              updateResponse={updateResponse}
+              scoreResult={scoreResult!}
+              showScoreToRespondent={showScoreToRespondent}
+            />
           )}
         </div>
       </div>
@@ -179,18 +213,60 @@ function PreviewFieldCard({
   field,
   form,
   device,
-  span
+  span,
+  responses,
+  updateResponse
 }: {
   field: Field;
   form: Form;
   device: Device;
   span: string;
+  responses: Record<string, any>;
+  updateResponse: (fieldId: string, response: any) => void;
 }) {
   if (field.type === 'section_break') {
     // Dans la vue scroll, section_break = séparateur visuel
     return (
       <div key={field.id} className="col-span-full pt-6">
-        {field.label.fr && <h2 className="font-display text-2xl text-text-primary">{field.label.fr}</h2>}
+        {field.label.fr && (
+          <h2 className="font-display text-2xl text-text-primary flex items-center gap-2">
+            {isIconVisible(field, form.theme) && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  background: 'var(--papyrus-surface)',
+                  border: '0.5px solid var(--papyrus-border)',
+                  marginRight: 6,
+                  flexShrink: 0,
+                }}
+              >
+                {field.style?.icon_value?.startsWith('ti-') ? (
+                  <i
+                    className={`ti ${field.style.icon_value}`}
+                    aria-hidden="true"
+                    style={{ fontSize: 20, color: 'var(--accent)' }}
+                  />
+                ) : field.style?.icon_value ? (
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>
+                    {field.style.icon_value}
+                  </span>
+                ) : (
+                  <i
+                    className={`ti ${getFieldIcon(field)}`}
+                    aria-hidden="true"
+                    style={{ fontSize: 20, color: 'var(--accent)' }}
+                  />
+                )}
+              </span>
+            )}
+            <span>{field.label.fr}</span>
+          </h2>
+        )}
         <div className="papyrus-divider mt-2" />
       </div>
     );
@@ -199,7 +275,7 @@ function PreviewFieldCard({
   if (field.type === 'image' || field.type === 'video') {
     return (
       <div className={span}>
-        <FieldRenderer field={field} preview={false} mobile={device === 'mobile'} />
+        <FieldRenderer field={field} preview={true} mobile={device === 'mobile'} />
       </div>
     );
   }
@@ -233,9 +309,15 @@ function PreviewFieldCard({
       )}
       style={{ backgroundColor: form.theme.field_bg_color }}
     >
-      <FieldQuestion field={field} globalStyle={form.theme.field_style} />
+      <FieldQuestion field={field} theme={form.theme} globalStyle={form.theme.field_style} />
       <div className="mt-4">
-        <FieldRenderer field={field} preview={false} mobile={device === 'mobile'} />
+        <FieldRenderer
+          field={field}
+          preview={false}
+          mobile={device === 'mobile'}
+          value={responses[field.id]}
+          onValueChange={(val) => updateResponse(field.id, val)}
+        />
       </div>
     </div>
   );
@@ -245,7 +327,21 @@ function PreviewFieldCard({
 // Scroll Preview
 // ============================================================================
 
-function ScrollPreview({ form, device }: { form: Form; device: Device }) {
+function ScrollPreview({
+  form,
+  device,
+  responses,
+  updateResponse,
+  scoreResult,
+  showScoreToRespondent
+}: {
+  form: Form;
+  device: Device;
+  responses: Record<string, any>;
+  updateResponse: (fieldId: string, response: any) => void;
+  scoreResult: ScoreResult;
+  showScoreToRespondent: boolean;
+}) {
   const fields = form.fields ?? [];
   const hasInputs = fields.some(
     (f) => f.type !== 'section_break' && f.type !== 'image' && f.type !== 'video' && f.type !== 'statement'
@@ -271,9 +367,30 @@ function ScrollPreview({ form, device }: { form: Form; device: Device }) {
         {fields.map((field) => {
           const span =
             device === 'mobile' || (field.layout_width ?? 'full') === 'full' ? 'col-span-2' : 'col-span-1';
-          return <PreviewFieldCard key={field.id} field={field} form={form} device={device} span={span} />;
+          return (
+            <PreviewFieldCard
+              key={field.id}
+              field={field}
+              form={form}
+              device={device}
+              span={span}
+              responses={responses}
+              updateResponse={updateResponse}
+            />
+          );
         })}
       </div>
+
+      {/* Affichage du score de maturité si activé */}
+      {showScoreToRespondent && scoreResult.maxScore > 0 && (
+        <div className="mt-8">
+          <ScoreDisplay
+            scoreResult={scoreResult}
+            scoreLabel={form.theme.score_label}
+            scoreDescription={form.theme.score_description}
+          />
+        </div>
+      )}
 
       {hasInputs && (
         <div className="mt-8 flex justify-end">
@@ -290,7 +407,21 @@ function ScrollPreview({ form, device }: { form: Form; device: Device }) {
 // Sections Preview (paginated by section_break)
 // ============================================================================
 
-function SectionsPreview({ form, device }: { form: Form; device: Device }) {
+function SectionsPreview({
+  form,
+  device,
+  responses,
+  updateResponse,
+  scoreResult,
+  showScoreToRespondent
+}: {
+  form: Form;
+  device: Device;
+  responses: Record<string, any>;
+  updateResponse: (fieldId: string, response: any) => void;
+  scoreResult: ScoreResult;
+  showScoreToRespondent: boolean;
+}) {
   const fields = form.fields ?? [];
   const pages = buildPages(fields);
   const [pageIdx, setPageIdx] = useState(0);
@@ -341,7 +472,43 @@ function SectionsPreview({ form, device }: { form: Form; device: Device }) {
 
       {pageHeader?.label.fr && pageIdx > 0 && (
         <div className="mb-6">
-          <h2 className="font-display text-3xl text-text-primary">{pageHeader.label.fr}</h2>
+          <h2 className="font-display text-3xl text-text-primary flex items-center gap-2">
+            {isIconVisible(pageHeader, form.theme) && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  background: 'var(--papyrus-surface)',
+                  border: '0.5px solid var(--papyrus-border)',
+                  marginRight: 6,
+                  flexShrink: 0,
+                }}
+              >
+                {pageHeader.style?.icon_value?.startsWith('ti-') ? (
+                  <i
+                    className={`ti ${pageHeader.style.icon_value}`}
+                    aria-hidden="true"
+                    style={{ fontSize: 20, color: 'var(--accent)' }}
+                  />
+                ) : pageHeader.style?.icon_value ? (
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>
+                    {pageHeader.style.icon_value}
+                  </span>
+                ) : (
+                  <i
+                    className={`ti ${getFieldIcon(pageHeader)}`}
+                    aria-hidden="true"
+                    style={{ fontSize: 20, color: 'var(--accent)' }}
+                  />
+                )}
+              </span>
+            )}
+            <span>{pageHeader.label.fr}</span>
+          </h2>
           {pageHeader.description?.fr && (
             <p className="papyrus-meta mt-2 text-base">{pageHeader.description.fr}</p>
           )}
@@ -358,9 +525,30 @@ function SectionsPreview({ form, device }: { form: Form; device: Device }) {
         {pageFields.map((field) => {
           const span =
             device === 'mobile' || (field.layout_width ?? 'full') === 'full' ? 'col-span-2' : 'col-span-1';
-          return <PreviewFieldCard key={field.id} field={field} form={form} device={device} span={span} />;
+          return (
+            <PreviewFieldCard
+              key={field.id}
+              field={field}
+              form={form}
+              device={device}
+              span={span}
+              responses={responses}
+              updateResponse={updateResponse}
+            />
+          );
         })}
       </div>
+
+      {/* Affichage du score sur la dernière page */}
+      {isLast && showScoreToRespondent && scoreResult.maxScore > 0 && (
+        <div className="mt-8">
+          <ScoreDisplay
+            scoreResult={scoreResult}
+            scoreLabel={form.theme.score_label}
+            scoreDescription={form.theme.score_description}
+          />
+        </div>
+      )}
 
       {/* Navigation */}
       <div className="mt-8 flex items-center justify-between">
@@ -390,7 +578,21 @@ function SectionsPreview({ form, device }: { form: Form; device: Device }) {
 // Typeform Preview (one question at a time, animated)
 // ============================================================================
 
-function TypeformPreview({ form, device }: { form: Form; device: Device }) {
+function TypeformPreview({
+  form,
+  device,
+  responses,
+  updateResponse,
+  scoreResult,
+  showScoreToRespondent
+}: {
+  form: Form;
+  device: Device;
+  responses: Record<string, any>;
+  updateResponse: (fieldId: string, response: any) => void;
+  scoreResult: ScoreResult;
+  showScoreToRespondent: boolean;
+}) {
   const fields = form.fields ?? [];
   const screens = fields.filter((f) => f.type !== 'section_break');
   const [idx, setIdx] = useState(0);
@@ -526,7 +728,24 @@ function TypeformPreview({ form, device }: { form: Form; device: Device }) {
             </div>
 
             {/* Question + champ (ou texte libre) */}
-            <TypeformScreen field={current} form={form} device={device} />
+            <TypeformScreen
+              field={current}
+              form={form}
+              device={device}
+              responses={responses}
+              updateResponse={updateResponse}
+            />
+
+            {/* Affichage du score sur la dernière question */}
+            {isLast && showScoreToRespondent && scoreResult.maxScore > 0 && (
+              <div className="mt-8">
+                <ScoreDisplay
+                  scoreResult={scoreResult}
+                  scoreLabel={form.theme.score_label}
+                  scoreDescription={form.theme.score_description}
+                />
+              </div>
+            )}
 
             {/* Bouton Suivant — toujours en bas de la carte */}
             <div className="mt-8 flex items-center justify-end">
@@ -546,7 +765,19 @@ function TypeformPreview({ form, device }: { form: Form; device: Device }) {
   );
 }
 
-function TypeformScreen({ field, form, device }: { field: Field; form: Form; device: Device }) {
+function TypeformScreen({
+  field,
+  form,
+  device,
+  responses,
+  updateResponse
+}: {
+  field: Field;
+  form: Form;
+  device: Device;
+  responses: Record<string, any>;
+  updateResponse: (fieldId: string, response: any) => void;
+}) {
   if (field.type === 'image' || field.type === 'video') {
     return <FieldRenderer field={field} preview={false} mobile={device === 'mobile'} />;
   }
@@ -576,9 +807,15 @@ function TypeformScreen({ field, form, device }: { field: Field; form: Form; dev
 
   return (
     <div>
-      <FieldQuestion field={field} globalStyle={form.theme.field_style} />
+      <FieldQuestion field={field} theme={form.theme} globalStyle={form.theme.field_style} />
       <div className="mt-4">
-        <FieldRenderer field={field} preview={false} mobile={device === 'mobile'} />
+        <FieldRenderer
+          field={field}
+          preview={false}
+          mobile={device === 'mobile'}
+          value={responses[field.id]}
+          onValueChange={(val) => updateResponse(field.id, val)}
+        />
       </div>
     </div>
   );
@@ -590,9 +827,11 @@ function TypeformScreen({ field, form, device }: { field: Field; form: Form; dev
 
 function FieldQuestion({
   field,
+  theme,
   globalStyle
 }: {
   field: Field;
+  theme?: FormTheme;
   globalStyle?: FieldStyle;
 }) {
   const style = { ...(globalStyle ?? {}), ...(field.style ?? {}) };
@@ -614,13 +853,67 @@ function FieldQuestion({
   return (
     <div>
       <div
-        className={cn(sizeClass, fontClass, weightClass, style.label_italic && 'italic', 'leading-snug text-text-primary')}
-        style={{ color: style.label_color, textAlign: style.label_align }}
+        className={cn(
+          sizeClass,
+          fontClass,
+          weightClass,
+          style.label_italic && 'italic',
+          'flex items-center text-text-primary break-words whitespace-pre-wrap'
+        )}
+        style={{
+          color: style.label_color,
+          textAlign: style.label_align,
+          wordBreak: 'break-word',
+          overflowWrap: 'break-word'
+        }}
       >
-        {field.label.fr || 'Question sans titre'}
-        {field.required && <span className="ml-1 text-danger">*</span>}
+        {theme && isIconVisible(field, theme) && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              background: 'var(--papyrus-surface)',
+              border: '0.5px solid var(--papyrus-border)',
+              marginRight: 8,
+              flexShrink: 0,
+            }}
+          >
+            {field.style?.icon_value?.startsWith('ti-') ? (
+              <i
+                className={`ti ${field.style.icon_value}`}
+                aria-hidden="true"
+                style={{ fontSize: 20, color: 'var(--accent)' }}
+              />
+            ) : field.style?.icon_value ? (
+              <span style={{ fontSize: 22, lineHeight: 1 }}>
+                {field.style.icon_value}
+              </span>
+            ) : (
+              <i
+                className={`ti ${getFieldIcon(field)}`}
+                aria-hidden="true"
+                style={{ fontSize: 20, color: 'var(--accent)' }}
+              />
+            )}
+          </span>
+        )}
+        <span>
+          {field.label.fr || 'Question sans titre'}
+          {field.required && <span className="ml-1 text-danger">*</span>}
+        </span>
       </div>
-      {field.description.fr && <p className="papyrus-meta mt-1 text-sm">{field.description.fr}</p>}
+      {field.description.fr && (
+        <p 
+          className="papyrus-meta mt-1 text-sm break-words whitespace-pre-wrap"
+          style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+        >
+          {field.description.fr}
+        </p>
+      )}
     </div>
   );
 }

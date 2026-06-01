@@ -9,7 +9,7 @@ import { IS_LOCAL_MODE } from '@/lib/mode';
 
 export default function SignupPage() {
   const router = useRouter();
-  const [teamName, setTeamName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +37,7 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        data: { team_name: teamName || 'Mon équipe' },
+        data: { team_name: companyName || 'Mon équipe' },
         emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`
       }
     });
@@ -46,6 +46,12 @@ export default function SignupPage() {
       setLoading(false);
       return;
     }
+
+    // Sauvegarder le nom d'entreprise en localStorage si renseigné
+    if (companyName.trim()) {
+      localStorage.setItem('papyrus_user_company', companyName.trim());
+    }
+
     router.push('/dashboard');
     router.refresh();
   }
@@ -58,13 +64,18 @@ export default function SignupPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          name="teamName"
-          label="Nom de votre équipe"
-          placeholder="Mooove"
-          value={teamName}
-          onChange={(e) => setTeamName(e.target.value)}
-        />
+        <div>
+          <Input
+            name="companyName"
+            label="Nom de votre entreprise"
+            placeholder="ex : Mooove Studio, Freelance, ..."
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+          />
+          <p className="mt-1 text-[11px] text-text-tertiary italic">
+            Optionnel — laissez vide si vous utilisez Papyrus à titre perso
+          </p>
+        </div>
         <Input
           type="email"
           name="email"

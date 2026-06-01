@@ -2,8 +2,10 @@
 
 import { ChevronDown, ChevronUp, GripVertical, Plus, X } from 'lucide-react';
 import type { Field, FieldOption } from '@/types';
-import { newOptionId } from '@/lib/store/local-forms';
+import { newOptionId } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { LIMITS } from '@/lib/constants/limits';
+import { toast } from '@/components/ui/Toast';
 
 interface Props {
   field: Field;
@@ -61,8 +63,8 @@ export function MatrixEditor({ field, onChange, scoringEnabled = false }: Props)
         </div>
       </div>
 
-      <SubEditor title="Lignes (questions)" items={rows} onChange={updateRows} placeholder="Critère" />
-      <SubEditor title="Colonnes (réponses)" items={cols} onChange={updateCols} placeholder="Réponse" scoringEnabled={scoringEnabled} />
+      <SubEditor title="Lignes (questions)" items={rows} onChange={updateRows} placeholder="Critère" maxItems={LIMITS.MATRIX_ROWS_MAX} />
+      <SubEditor title="Colonnes (réponses)" items={cols} onChange={updateCols} placeholder="Réponse" scoringEnabled={scoringEnabled} maxItems={LIMITS.MATRIX_COLS_MAX} />
     </div>
   );
 }
@@ -72,13 +74,15 @@ function SubEditor({
   items,
   onChange,
   placeholder,
-  scoringEnabled = false
+  scoringEnabled = false,
+  maxItems
 }: {
   title: string;
   items: FieldOption[];
   onChange: (next: FieldOption[]) => void;
   placeholder: string;
   scoringEnabled?: boolean;
+  maxItems: number;
 }) {
   function update(id: string, label: string) {
     onChange(items.map((o) => (o.id === id ? { ...o, label: { ...o.label, fr: label } } : o)));
@@ -94,12 +98,16 @@ function SubEditor({
   }
 
   function add() {
+    if (items.length >= maxItems) {
+      toast.error(`Limite de ${maxItems} ${title.toLowerCase()} atteinte`);
+      return;
+    }
     onChange([...items, { id: newOptionId(), label: { fr: '' }, ...(scoringEnabled && { points: 0 }) }]);
   }
 
   return (
     <div className="space-y-1.5">
-      <div className="text-xs font-medium uppercase tracking-wide text-text-tertiary">{title}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-text-tertiary">{title} ({items.length}/{maxItems})</div>
       <div className="space-y-1">
         {items.map((opt, i) => (
           <div key={opt.id} className="group flex items-center gap-1.5">
@@ -108,6 +116,7 @@ function SubEditor({
               value={opt.label.fr || ''}
               onChange={(e) => update(opt.id, e.target.value)}
               placeholder={`${placeholder} ${i + 1}`}
+              maxLength={LIMITS.OPTION_LABEL_MAX}
               className="h-8 flex-1 rounded-md border border-border-strong bg-bg-base px-2.5 text-sm text-text-primary focus:border-accent focus:outline-none"
             />
             {scoringEnabled && (

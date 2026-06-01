@@ -29,7 +29,7 @@ import {
   deleteForm,
   setAsTemplate,
   unarchiveForm
-} from '@/lib/store/local-forms';
+} from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type { Form } from '@/types';
 
@@ -56,9 +56,9 @@ export default function FormDashboardPage() {
     );
   }
 
-  function handleClone() {
+  async function handleClone() {
     if (!form) return;
-    const cloned = cloneForm(form.id);
+    const cloned = await cloneForm(form.id);
     if (cloned) router.push(`/forms/${cloned.id}/edit`);
   }
 
@@ -75,11 +75,16 @@ export default function FormDashboardPage() {
     setMenuOpen(false);
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!form) return;
     if (confirm(`Supprimer définitivement « ${form.title} » ?`)) {
-      deleteForm(form.id);
-      router.push('/forms');
+      try {
+        await deleteForm(form.id);
+        router.push('/forms');
+      } catch (error) {
+        console.error('Failed to delete form:', error);
+        // TODO: Afficher une notification d'erreur à l'utilisateur
+      }
     }
   }
 

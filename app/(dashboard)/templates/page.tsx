@@ -59,9 +59,14 @@ export default function TemplatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buckets, favorites, search]);
 
-  function handleUse(template: Form) {
-    const cloned = cloneTemplate(template);
-    router.push(`/forms/${cloned.id}/edit`);
+  async function handleUse(template: Form) {
+    try {
+      const cloned = await cloneTemplate(template);
+      router.push(`/forms/${cloned.id}/edit`);
+    } catch (error) {
+      console.error('Failed to clone template:', error);
+      // TODO: Afficher une notification d'erreur à l'utilisateur
+    }
   }
 
   function handleToggleFav(id: string) {

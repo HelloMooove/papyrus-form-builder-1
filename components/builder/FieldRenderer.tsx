@@ -81,10 +81,22 @@ interface Props {
   onChange?: (patch: Partial<Field>) => void;
   /** Style global appliqué à toutes les questions (depuis form.theme.field_style). */
   globalStyle?: any;
+  /** Valeur actuelle du champ (mode interactif). */
+  value?: any;
+  /** Callback appelé lors de la modification de la valeur. */
+  onValueChange?: (val: any) => void;
 }
 
 /** Rendu UI d'un champ — utilisé dans le builder (preview) et la vue publique. */
-export function FieldRenderer({ field, preview = false, mobile = false, onChange, globalStyle }: Props) {
+export function FieldRenderer({
+  field,
+  preview = false,
+  mobile = false,
+  onChange,
+  globalStyle,
+  value,
+  onValueChange
+}: Props) {
   const lang = 'fr';
   const placeholder = field.placeholder?.[lang] ?? '';
   const required = field.required;
@@ -99,6 +111,9 @@ export function FieldRenderer({ field, preview = false, mobile = false, onChange
           placeholder={placeholder || 'Votre réponse'}
           required={required}
           preview={preview}
+          onChange={onChange}
+          value={value}
+          onValueChange={onValueChange}
         />
       );
     }
@@ -113,6 +128,10 @@ export function FieldRenderer({ field, preview = false, mobile = false, onChange
           placeholder={placeholder || 'vous@exemple.com'}
           baseInput={baseInput}
           preview={preview}
+          onChange={onChange}
+          field={field}
+          value={value}
+          onValueChange={onValueChange}
         />
       );
 
@@ -126,6 +145,10 @@ export function FieldRenderer({ field, preview = false, mobile = false, onChange
           placeholder={placeholder || 'https://exemple.com'}
           baseInput={baseInput}
           preview={preview}
+          onChange={onChange}
+          field={field}
+          value={value}
+          onValueChange={onValueChange}
         />
       );
 
@@ -136,6 +159,9 @@ export function FieldRenderer({ field, preview = false, mobile = false, onChange
           placeholder={placeholder || 'Votre réponse…'}
           required={required}
           preview={preview}
+          onChange={onChange}
+          value={value}
+          onValueChange={onValueChange}
         />
       );
     }
@@ -144,23 +170,35 @@ export function FieldRenderer({ field, preview = false, mobile = false, onChange
       return (
         <NumberInputWithValidation
           field={field}
-          placeholder={placeholder || '0'}
+          placeholder={placeholder || '4'}
           required={required}
           preview={preview}
           baseInput={baseInput}
+          onChange={onChange}
+          value={value}
+          onValueChange={onValueChange}
         />
       );
 
     case 'phone':
-      return preview ? (
-        <BuilderPhoneField
-          placeholder={placeholder}
-        />
-      ) : (
+      if (onChange) {
+        return (
+          <BuilderPhoneField
+            placeholder={placeholder}
+            onChange={onChange}
+            field={field}
+          />
+        );
+      }
+      // Pour l'aperçu et le mode répondant réel, on utilise RespondentPhoneField 
+      // pour que le sélecteur de pays et les placeholders dynamiques fonctionnent parfaitement.
+      return (
         <RespondentPhoneField
           name={field.id}
           required={required}
           placeholder={placeholder}
+          value={value}
+          onChange={(val: string) => onValueChange && onValueChange(val)}
         />
       );
 
@@ -172,31 +210,80 @@ export function FieldRenderer({ field, preview = false, mobile = false, onChange
           required={required && !preview}
           className={baseInput}
           disabled={preview}
+          value={value || ''}
+          onChange={(e) => onValueChange && onValueChange(e.target.value)}
         />
       );
 
     case 'single_choice':
-      return <SingleChoice field={field} preview={preview} mobile={mobile} required={required} />;
+      return (
+        <SingleChoice
+          field={field}
+          preview={preview}
+          mobile={mobile}
+          required={required}
+          value={value}
+          onChange={onValueChange}
+        />
+      );
 
     case 'multiple_choice':
-      return <MultipleChoice field={field} preview={preview} mobile={mobile} required={required} />;
+      return (
+        <MultipleChoice
+          field={field}
+          preview={preview}
+          mobile={mobile}
+          required={required}
+          value={value}
+          onChange={onValueChange}
+        />
+      );
 
     case 'dropdown':
-      return <DropdownChoice field={field} preview={preview} baseInput={baseInput} required={required} />;
+      return (
+        <DropdownChoice
+          field={field}
+          preview={preview}
+          baseInput={baseInput}
+          required={required}
+          value={value}
+          onChange={onValueChange}
+        />
+      );
 
     case 'rating': {
       const max = field.validation?.max ?? 5;
-      return <Rating max={max} preview={preview} />;
+      return (
+        <Rating
+          max={max}
+          preview={preview}
+          value={value}
+          onChange={onValueChange}
+        />
+      );
     }
 
     case 'nps':
-      return <NpsScale preview={preview} />;
+      return (
+        <NpsScale
+          preview={preview}
+          value={value}
+          onChange={onValueChange}
+        />
+      );
 
     case 'file':
       return <MediaField field={field} preview={preview} required={required} type="file" onChange={onChange} globalStyle={globalStyle} />;
 
     case 'matrix':
-      return <MatrixField field={field} preview={preview} />;
+      return (
+        <MatrixField
+          field={field}
+          preview={preview}
+          value={value}
+          onChange={onValueChange}
+        />
+      );
 
     case 'image':
       return <MediaField field={field} preview={preview} required={required} type="image" onChange={onChange} globalStyle={globalStyle} />;
@@ -232,7 +319,11 @@ function ValidatedTextInput({
   placeholder,
   baseInput,
   preview,
-  required
+  required,
+  onChange,
+  field,
+  value: controlledValue,
+  onValueChange
 }: {
   name?: string;
   type: 'email' | 'url';
@@ -241,9 +332,34 @@ function ValidatedTextInput({
   baseInput: string;
   preview: boolean;
   required?: boolean;
+  onChange?: (patch: Partial<Field>) => void;
+  field?: Field;
+  value?: string;
+  onValueChange?: (val: string) => void;
 }) {
-  const [value, setValue] = useState('');
+  const [localValue, setLocalValue] = useState('');
   const [touched, setTouched] = useState(false);
+  const value = controlledValue !== undefined ? controlledValue : localValue;
+  const handleValueChange = (val: string) => {
+    if (onValueChange) onValueChange(val);
+    else setLocalValue(val);
+  };
+
+  if (onChange && field) {
+    const defaultPlaceholder = type === 'email' ? 'vous@exemple.com' : 'https://exemple.com';
+    return (
+      <input
+        type="text"
+        value={field.placeholder?.fr ?? ''}
+        onChange={(e) => {
+          const current = field.placeholder ?? {};
+          onChange({ placeholder: { ...current, fr: e.target.value } });
+        }}
+        placeholder={placeholder || defaultPlaceholder}
+        className="w-full rounded-md border border-dashed border-border-strong bg-transparent px-3 py-2 text-sm text-text-tertiary placeholder:text-text-tertiary/40 focus:border-accent focus:bg-bg-elevated/50 focus:outline-none"
+      />
+    );
+  }
 
   let error: string | null = null;
   if (touched && value) {
@@ -266,7 +382,7 @@ function ValidatedTextInput({
         required={required}
         maxLength={maxLength}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => handleValueChange(e.target.value)}
         onBlur={() => setTouched(true)}
         placeholder={placeholder}
         disabled={preview}
@@ -319,8 +435,28 @@ function optionsGridClass(cols: number, mobile: boolean): string {
   return 'grid grid-cols-2 gap-2';
 }
 
-function SingleChoice({ field, preview, mobile, required }: { field: Field; preview: boolean; mobile: boolean; required?: boolean }) {
-  const [selected, setSelected] = useState<string | null>(null);
+function SingleChoice({
+  field,
+  preview,
+  mobile,
+  required,
+  value,
+  onChange
+}: {
+  field: Field;
+  preview: boolean;
+  mobile: boolean;
+  required?: boolean;
+  value?: string;
+  onChange?: (val: string) => void;
+}) {
+  const [localSelected, setLocalSelected] = useState<string | null>(null);
+  const selected = value !== undefined ? value : localSelected;
+  const setSelected = (val: string) => {
+    if (onChange) onChange(val);
+    else setLocalSelected(val);
+  };
+
   const [otherText, setOtherText] = useState('');
   const hasOther = field.validation?.has_other ?? false;
   const otherLabel = field.validation?.other_label || 'Autre';
@@ -472,8 +608,27 @@ function SingleChoice({ field, preview, mobile, required }: { field: Field; prev
   );
 }
 
-function MultipleChoice({ field, preview, mobile, required }: { field: Field; preview: boolean; mobile: boolean; required?: boolean }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+function MultipleChoice({
+  field,
+  preview,
+  mobile,
+  required,
+  value,
+  onChange
+}: {
+  field: Field;
+  preview: boolean;
+  mobile: boolean;
+  required?: boolean;
+  value?: string[];
+  onChange?: (val: string[]) => void;
+}) {
+  const [localSelected, setLocalSelected] = useState<Set<string>>(new Set());
+  const selected = useMemo(() => {
+    if (value !== undefined) return new Set(value);
+    return localSelected;
+  }, [value, localSelected]);
+
   const [otherText, setOtherText] = useState('');
   // Réponses aux sous-questions : { [optionId]: { [subfieldId]: string } }
   const [subAnswers, setSubAnswers] = useState<Record<string, Record<string, string>>>({});
@@ -487,17 +642,19 @@ function MultipleChoice({ field, preview, mobile, required }: { field: Field; pr
   const displayOptions = useDisplayOptions(field);
 
   function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        // Si une borne max est définie, on bloque l'ajout
-        if (typeof max === 'number' && next.size >= max) return prev;
-        next.add(id);
-      }
-      return next;
-    });
+    let nextSet = new Set(selected);
+    if (nextSet.has(id)) {
+      nextSet.delete(id);
+    } else {
+      if (typeof max === 'number' && nextSet.size >= max) return;
+      nextSet.add(id);
+    }
+
+    if (onChange) {
+      onChange(Array.from(nextSet));
+    } else {
+      setLocalSelected(nextSet);
+    }
   }
 
   function setSubAnswer(optId: string, sfId: string, value: string) {
@@ -730,14 +887,24 @@ function DropdownChoice({
   field,
   preview,
   baseInput,
-  required
+  required,
+  value,
+  onChange
 }: {
   field: Field;
   preview: boolean;
   baseInput: string;
   required?: boolean;
+  value?: string;
+  onChange?: (val: string) => void;
 }) {
-  const [value, setValue] = useState('');
+  const [localValue, setLocalValue] = useState('');
+  const currentValue = value !== undefined ? value : localValue;
+  const handleValueChange = (val: string) => {
+    if (onChange) onChange(val);
+    else setLocalValue(val);
+  };
+
   const [otherText, setOtherText] = useState('');
   const hasOther = field.validation?.has_other ?? false;
   const otherLabel = field.validation?.other_label || 'Autre';
@@ -750,8 +917,8 @@ function DropdownChoice({
         className={baseInput}
         disabled={preview}
         required={required && !preview}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        value={currentValue}
+        onChange={(e) => handleValueChange(e.target.value)}
       >
         <option value="" disabled>
           Sélectionner…
@@ -763,7 +930,7 @@ function DropdownChoice({
         ))}
         {hasOther && <option value={OTHER_VALUE}>{otherLabel}</option>}
       </select>
-      {hasOther && value === OTHER_VALUE && (
+      {hasOther && currentValue === OTHER_VALUE && (
         <input
           type="text"
           value={otherText}
@@ -777,9 +944,24 @@ function DropdownChoice({
   );
 }
 
-function Rating({ max, preview }: { max: number; preview: boolean }) {
+function Rating({
+  max,
+  preview,
+  value,
+  onChange
+}: {
+  max: number;
+  preview: boolean;
+  value?: number;
+  onChange?: (val: number) => void;
+}) {
   const [hover, setHover] = useState(0);
-  const [value, setValue] = useState(0);
+  const [localValue, setLocalValue] = useState(0);
+  const currentValue = value !== undefined ? value : localValue;
+  const handleValueChange = (val: number) => {
+    if (onChange) onChange(val);
+    else setLocalValue(val);
+  };
 
   if (preview) {
     return (
@@ -794,14 +976,14 @@ function Rating({ max, preview }: { max: number; preview: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
       {Array.from({ length: max }).map((_, i) => {
-        const filled = (hover || value) > i;
+        const filled = (hover || currentValue) > i;
         return (
           <button
             key={i}
             type="button"
             onMouseEnter={() => setHover(i + 1)}
             onMouseLeave={() => setHover(0)}
-            onClick={() => setValue(i + 1)}
+            onClick={() => handleValueChange(i + 1)}
             className="transition"
             aria-label={`Note ${i + 1}`}
           >
@@ -816,8 +998,22 @@ function Rating({ max, preview }: { max: number; preview: boolean }) {
   );
 }
 
-function NpsScale({ preview }: { preview: boolean }) {
-  const [value, setValue] = useState<number | null>(null);
+function NpsScale({
+  preview,
+  value,
+  onChange
+}: {
+  preview: boolean;
+  value?: number | null;
+  onChange?: (val: number) => void;
+}) {
+  const [localValue, setLocalValue] = useState<number | null>(null);
+  const currentValue = value !== undefined ? value : localValue;
+  const handleValueChange = (val: number) => {
+    if (onChange) onChange(val);
+    else setLocalValue(val);
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
@@ -826,9 +1022,9 @@ function NpsScale({ preview }: { preview: boolean }) {
             key={i}
             type="button"
             disabled={preview}
-            onClick={() => setValue(i)}
+            onClick={() => handleValueChange(i)}
             className={`h-9 w-9 rounded-md border text-sm transition disabled:cursor-default ${
-              value === i && !preview
+              currentValue === i && !preview
                 ? 'border-accent bg-accent text-mooove-ice'
                 : 'border-border-strong bg-bg-base text-text-primary'
             } ${!preview && 'hover:border-accent'}`}
@@ -1041,7 +1237,7 @@ function MediaField({ field, preview, required, type, onChange, globalStyle }: {
 
   // TEMP: Force l'affichage de ModeSelector pour debug
   if (!creatorModeEnabled && !respondentModeEnabled) {
-    return <ModeSelector field={field} type={type} labels={labels} onChange={onChange} />;
+    return <ModeSelector field={field} type={type} labels={labels[type]} onChange={onChange} />;
   }
 
   // Si il y a du contenu mais aucun mode activé, activer automatiquement le mode créateur
@@ -1056,7 +1252,7 @@ function MediaField({ field, preview, required, type, onChange, globalStyle }: {
         <ExpandedCreatorZone
           field={field}
           type={type}
-          labels={labels}
+          labels={labels[type]}
           onChange={onChange}
           canSwitchMode={finalRespondentMode}
           globalStyle={globalStyle}
@@ -1068,7 +1264,7 @@ function MediaField({ field, preview, required, type, onChange, globalStyle }: {
         <ExpandedRespondentZone
           field={field}
           type={type}
-          labels={labels}
+          labels={labels[type]}
           onChange={onChange}
         />
       )}
@@ -1125,7 +1321,7 @@ function ExpandedCreatorZone({ field, type, labels, onChange, canSwitchMode, glo
       {/* Header avec mode actif */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-primary">{labels[type].creator}</span>
+          <span className="text-sm font-medium text-text-primary">{labels.creator}</span>
           <span className="rounded-md bg-accent px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
             Créateur
           </span>
@@ -1253,7 +1449,7 @@ function ExpandedRespondentZone({ field, type, labels, onChange }: {
       {/* Header avec mode actif */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-primary">{labels[type].respondent}</span>
+          <span className="text-sm font-medium text-text-primary">{labels.respondent}</span>
           <span className="rounded-md bg-mooove-cyan px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
             Répondant
           </span>
@@ -1286,44 +1482,17 @@ function ExpandedRespondentZone({ field, type, labels, onChange }: {
         </div>
       </div>
 
-      {/* Paramètres rapides */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">Formats acceptés</label>
-          <input
-            type="text"
-            value={acceptTypes}
-            onChange={(e) => patchValidation({
-              accept: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-            })}
-            className="w-full rounded-md border border-border-strong bg-bg-base px-2 py-1 text-xs"
-            placeholder=".jpg,.png,.pdf"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">Taille max (MB)</label>
-          <input
-            type="number"
-            value={maxFileSize}
-            onChange={(e) => patchValidation({
-              max_file_size_mb: e.target.value ? Number(e.target.value) : undefined
-            })}
-            min={1}
-            max={50}
-            className="w-full rounded-md border border-border-strong bg-bg-base px-2 py-1 text-xs"
-          />
-        </div>
-      </div>
     </div>
   );
 }
 
 /** Zone créateur dans le builder */
-function CreatorZone({ type, enabled, mediaUrl, alignment }: {
+function CreatorZone({ type, enabled, mediaUrl, alignment, globalStyle }: {
   type: 'image' | 'video' | 'file';
   enabled: boolean;
   mediaUrl?: string;
   alignment: string;
+  globalStyle?: any;
 }) {
   if (!enabled) {
     return (
@@ -1892,11 +2061,48 @@ function CreatorContent({ type, mediaUrl, alignment, field, compact = false, pre
 }
 
 
-function MatrixField({ field, preview }: { field: Field; preview: boolean }) {
+function MatrixField({
+  field,
+  preview,
+  value,
+  onChange
+}: {
+  field: Field;
+  preview: boolean;
+  value?: Record<string, string | string[]>;
+  onChange?: (val: Record<string, string | string[]>) => void;
+}) {
   const rows = field.rows ?? [];
   const cols = field.options ?? [];
   const mode = field.validation?.matrix_mode ?? 'single';
   const inputType = mode === 'multiple' ? 'checkbox' : 'radio';
+
+  const [localValue, setLocalValue] = useState<Record<string, string | string[]>>({});
+  const currentValue = value !== undefined ? value : localValue;
+
+  const handleChange = (rowId: string, colId: string, checked: boolean) => {
+    let nextValue = { ...currentValue };
+    if (mode === 'single') {
+      if (checked) {
+        nextValue[rowId] = colId;
+      } else {
+        delete nextValue[rowId];
+      }
+    } else {
+      const currentList = Array.isArray(nextValue[rowId]) ? (nextValue[rowId] as string[]) : [];
+      if (checked) {
+        nextValue[rowId] = [...currentList, colId];
+      } else {
+        nextValue[rowId] = currentList.filter((id) => id !== colId);
+      }
+    }
+
+    if (onChange) {
+      onChange(nextValue);
+    } else {
+      setLocalValue(nextValue);
+    }
+  };
 
   if (rows.length === 0 || cols.length === 0) {
     return (
@@ -1928,17 +2134,25 @@ function MatrixField({ field, preview }: { field: Field; preview: boolean }) {
               <td className="break-words px-3 py-2 text-text-primary">
                 {row.label.fr || `Ligne ${rIdx + 1}`}
               </td>
-              {cols.map((col) => (
-                <td key={col.id} className="px-3 py-2 text-center">
-                  <input
-                    type={inputType}
-                    name={mode === 'single' ? `${field.id}-${row.id}` : undefined}
-                    disabled={preview}
-                    className={`h-4 w-4 ${inputType === 'checkbox' ? 'rounded' : ''}`}
-                    style={{ accentColor: 'var(--accent)' }}
-                  />
-                </td>
-              ))}
+              {cols.map((col) => {
+                const isChecked = mode === 'single'
+                  ? currentValue[row.id] === col.id
+                  : Array.isArray(currentValue[row.id]) && (currentValue[row.id] as string[]).includes(col.id);
+
+                return (
+                  <td key={col.id} className="px-3 py-2 text-center">
+                    <input
+                      type={inputType}
+                      name={mode === 'single' ? `${field.id}-${row.id}` : undefined}
+                      disabled={preview}
+                      checked={isChecked || false}
+                      onChange={(e) => handleChange(row.id, col.id, e.target.checked)}
+                      className={`h-4 w-4 ${inputType === 'checkbox' ? 'rounded' : ''}`}
+                      style={{ accentColor: 'var(--accent)' }}
+                    />
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
@@ -1948,30 +2162,61 @@ function MatrixField({ field, preview }: { field: Field; preview: boolean }) {
 }
 
 /** Composant pour champs texte court avec compteur de caractères */
-function ShortTextWithCounter({ field, placeholder, required, preview }: {
+function ShortTextWithCounter({
+  field,
+  placeholder,
+  required,
+  preview,
+  onChange,
+  value,
+  onValueChange
+}: {
   field: Field;
   placeholder: string;
   required: boolean;
   preview: boolean;
+  onChange?: (patch: Partial<Field>) => void;
+  value?: string;
+  onValueChange?: (val: string) => void;
 }) {
-  const [value, setValue] = useState('');
+  const [localValue, setLocalValue] = useState('');
   const [selectedUnit, setSelectedUnit] = useState('none');
   const [touched, setTouched] = useState(false);
   const responseType = field.validation?.response_type ?? 'text';
+  const currentValue = value !== undefined ? value : localValue;
+  const handleValueChange = (val: string) => {
+    if (onValueChange) onValueChange(val);
+    else setLocalValue(val);
+  };
 
   // Pour les champs texte
   if (responseType === 'text') {
     const maxLength = field.validation?.max ?? LIMITS.SHORT_TEXT_MAX_CHARS;
-    const currentLength = value.length;
+    const currentLength = currentValue.length;
     const isNearLimit = currentLength > maxLength * 0.8;
     const isAtLimit = currentLength >= maxLength;
+
+    if (onChange) {
+      return (
+        <input
+          type="text"
+          value={field.placeholder?.fr ?? ''}
+          onChange={(e) => {
+            const current = field.placeholder ?? {};
+            onChange({ placeholder: { ...current, fr: e.target.value } });
+          }}
+          placeholder={placeholder || 'Votre réponse'}
+          className="w-full rounded-md border border-dashed border-border-strong bg-transparent px-3 py-2 text-sm text-text-tertiary placeholder:text-text-tertiary/40 focus:border-accent focus:bg-bg-elevated/50 focus:outline-none"
+        />
+      );
+    }
 
     return (
       <div className="space-y-1.5">
         <AutoTextarea
           name={field.id}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
+          value={currentValue}
+          onChange={(e) => handleValueChange(e.target.value)}
           minRows={1}
           required={required && !preview}
           maxLength={maxLength}
@@ -2019,8 +2264,8 @@ function ShortTextWithCounter({ field, placeholder, required, preview }: {
 
   // Validation de la plage numérique
   let rangeError: string | null = null;
-  if (touched && value && !preview) {
-    const numValue = parseFloat(value);
+  if (touched && currentValue && !preview) {
+    const numValue = parseFloat(currentValue);
     if (!isNaN(numValue)) {
       if (responseType === 'integer' && !Number.isInteger(numValue)) {
         rangeError = 'Veuillez saisir un nombre entier.';
@@ -2061,7 +2306,7 @@ function ShortTextWithCounter({ field, placeholder, required, preview }: {
   }
 
   // Pour les champs numériques, toujours utiliser le placeholder dynamique
-  const finalPlaceholder = responseType === 'text' ? (placeholder || dynamicPlaceholder) : dynamicPlaceholder;
+  const finalPlaceholder = dynamicPlaceholder;
 
   // Mappage des unités
   const unitLabels = {
@@ -2112,8 +2357,8 @@ function ShortTextWithCounter({ field, placeholder, required, preview }: {
         <input
           name={field.id}
           type="number"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
+          value={currentValue}
+          onChange={(e) => handleValueChange(e.target.value)}
           onBlur={() => setTouched(true)}
           required={required && !preview}
           min={min}
@@ -2185,24 +2430,55 @@ function ShortTextWithCounter({ field, placeholder, required, preview }: {
 }
 
 /** Composant pour champs texte long avec compteur de caractères */
-function LongTextWithCounter({ field, placeholder, required, preview }: {
+function LongTextWithCounter({
+  field,
+  placeholder,
+  required,
+  preview,
+  onChange,
+  value,
+  onValueChange
+}: {
   field: Field;
   placeholder: string;
   required: boolean;
   preview: boolean;
+  onChange?: (patch: Partial<Field>) => void;
+  value?: string;
+  onValueChange?: (val: string) => void;
 }) {
-  const [value, setValue] = useState('');
+  const [localValue, setLocalValue] = useState('');
+  const currentValue = value !== undefined ? value : localValue;
+  const handleValueChange = (val: string) => {
+    if (onValueChange) onValueChange(val);
+    else setLocalValue(val);
+  };
   const maxLength = field.validation?.max ?? LIMITS.LONG_TEXT_MAX_CHARS;
-  const currentLength = value.length;
+  const currentLength = currentValue.length;
   const isNearLimit = currentLength > maxLength * 0.8;
   const isAtLimit = currentLength >= maxLength;
+
+  if (onChange) {
+    return (
+      <textarea
+        rows={3}
+        value={field.placeholder?.fr ?? ''}
+        onChange={(e) => {
+          const current = field.placeholder ?? {};
+          onChange({ placeholder: { ...current, fr: e.target.value } });
+        }}
+        placeholder={placeholder || 'Votre réponse…'}
+        className="w-full rounded-md border border-dashed border-border-strong bg-transparent px-3 py-2 text-sm text-text-tertiary placeholder:text-text-tertiary/40 focus:border-accent focus:bg-bg-elevated/50 focus:outline-none resize-y"
+      />
+    );
+  }
 
   return (
     <div className="space-y-1.5">
       <AutoTextarea
         name={field.id}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        value={currentValue}
+        onChange={(e) => handleValueChange(e.target.value)}
         minRows={3}
         required={required && !preview}
         maxLength={maxLength}
@@ -2244,15 +2520,47 @@ function LongTextWithCounter({ field, placeholder, required, preview }: {
 }
 
 /** Composant pour champ number avec validation de plage */
-function NumberInputWithValidation({ field, placeholder, required, preview, baseInput }: {
+function NumberInputWithValidation({
+  field,
+  placeholder,
+  required,
+  preview,
+  baseInput,
+  onChange,
+  value,
+  onValueChange
+}: {
   field: Field;
   placeholder: string;
   required: boolean;
   preview: boolean;
   baseInput: string;
+  onChange?: (patch: Partial<Field>) => void;
+  value?: string;
+  onValueChange?: (val: string) => void;
 }) {
-  const [value, setValue] = useState('');
+  const [localValue, setLocalValue] = useState('');
   const [touched, setTouched] = useState(false);
+  const currentValue = value !== undefined ? value : localValue;
+  const handleValueChange = (val: string) => {
+    if (onValueChange) onValueChange(val);
+    else setLocalValue(val);
+  };
+
+  if (onChange) {
+    return (
+      <input
+        type="text"
+        value={field.placeholder?.fr ?? ''}
+        onChange={(e) => {
+          const current = field.placeholder ?? {};
+          onChange({ placeholder: { ...current, fr: e.target.value } });
+        }}
+        placeholder={placeholder || '4'}
+        className="w-full rounded-md border border-dashed border-border-strong bg-transparent px-3 py-2 text-sm text-text-tertiary placeholder:text-text-tertiary/40 focus:border-accent focus:bg-bg-elevated/50 focus:outline-none"
+      />
+    );
+  }
   const min = field.validation?.min;
   const max = field.validation?.max;
 
@@ -2278,8 +2586,8 @@ function NumberInputWithValidation({ field, placeholder, required, preview, base
 
   // Validation de la plage numérique
   let rangeError: string | null = null;
-  if (touched && value && !preview) {
-    const numValue = parseFloat(value);
+  if (touched && currentValue && !preview) {
+    const numValue = parseFloat(currentValue);
     if (!isNaN(numValue)) {
       if (min !== undefined && numValue < min) {
         rangeError = max !== undefined
@@ -2298,8 +2606,8 @@ function NumberInputWithValidation({ field, placeholder, required, preview, base
       <input
         type="number"
         name={field.id}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        value={currentValue}
+        onChange={(e) => handleValueChange(e.target.value)}
         onBlur={() => setTouched(true)}
         required={required && !preview}
         className={cn(
