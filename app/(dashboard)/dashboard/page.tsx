@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/Badge';
 import { formatCount } from '@/lib/utils';
 import { useForms } from '@/lib/store/use-forms';
 import { createForm } from '@/lib/store';
+import { getWorkspaces } from '@/lib/store/local-workspaces';
 import { cloneTemplate, listTemplatesByScope } from '@/lib/store/templates';
 import { FAVORITES_EVENT, listFavorites } from '@/lib/store/favorites';
 import type { Form } from '@/types';
@@ -62,7 +63,23 @@ export default function DashboardHome() {
 
   async function handleNew() {
     try {
-      const f = await createForm();
+      // S'assurer que le workspace personnel existe
+      const { initDefaultWorkspace } = await import('@/lib/store/local-workspaces');
+      initDefaultWorkspace('local-user');
+
+      // Récupérer le workspace personnel pour associer le formulaire
+      const workspaces = getWorkspaces();
+      const personalWorkspace = workspaces.find(w => w.scope === 'personal');
+
+      if (!personalWorkspace) {
+        console.error('Aucun workspace personnel trouvé');
+        // Créer le formulaire sans workspace en fallback
+        const f = await createForm('Nouveau formulaire');
+        router.push(`/forms/${f.id}/edit`);
+        return;
+      }
+
+      const f = await createForm('Nouveau formulaire', personalWorkspace.id);
       router.push(`/forms/${f.id}/edit`);
     } catch (error) {
       console.error('Failed to create form:', error);

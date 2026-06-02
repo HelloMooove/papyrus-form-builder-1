@@ -5,6 +5,8 @@ import { Header } from '@/components/layout/Header';
 import { IS_LOCAL_MODE } from '@/lib/mode';
 import { cookies } from 'next/headers';
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   let teamName = 'Démo locale';
   let userEmail = 'local@papyrus.dev';
@@ -12,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   let allTeams: { id: string; name: string; plan: string }[] = [activeTeam];
 
   if (!IS_LOCAL_MODE) {
-    const { createClient } = await import('@/lib/supabase/server');
+    const { createClient, createAdminClient } = await import('@/lib/supabase/server');
     const supabase = createClient();
     const {
       data: { user }
@@ -21,20 +23,64 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
     userEmail = user.email ?? '';
 
-    // Charger tous les workspaces de l'utilisateur
-    const { data: memberships } = await supabase
+    const adminSupabase = createAdminClient();
+
+    // Charger tous les workspaces de l'utilisateur via le client Admin (pour contourner le bug RLS de récursivité infinie en base de données)
+    const { data: memberships } = await adminSupabase
       .from('team_members')
-      .select('team_id, role, teams(id, name, plan)');
+      .select('team_id, role, teams(id, name, plan)')
+      .eq('user_id', user.id);
 
-    if (memberships && memberships.length > 0) {
-      allTeams = memberships
-        .map((m) => {
-          const t = m.teams as unknown;
-          return Array.isArray(t) ? t[0] : (t as { id: string; name: string; plan: string } | null);
-        })
-        .filter((t): t is { id: string; name: string; plan: string } => !!t && !!t.id);
+    let membershipsList = memberships || [];
 
-      if (allTeams.length > 0) {
+    // Extraire les teams valides d'abord
+    allTeams = membershipsList
+      .map((m) => {
+        const t = m.teams as unknown;
+        return Array.isArray(t) ? t[0] : (t as { id: string; name: string; plan: string } | null);
+      })
+      .filter((t): t is { id: string; name: string; plan: string } => !!t && !!t.id);
+
+    if (allTeams.length === 0) {
+      // Si aucun workspace valide n'est trouvé -> création de "Mon espace" dans Supabase via le client Admin (RLS bypass)
+      const adminSupabase = createAdminClient();
+      const { data: newTeam, error: teamError } = await adminSupabase
+        .from('teams')
+        .insert({ name: 'Mon espace', plan: 'free' })
+        .select()
+        .single();
+
+      if (!teamError && newTeam) {
+        const { error: memberError } = await adminSupabase
+          .from('team_members')
+          .insert({
+            user_id: user.id,
+            team_id: newTeam.id,
+            role: 'admin'
+          });
+
+        if (!memberError) {
+          // Recharger le nouveau membership créé avec le client ADMIN pour contourner le bug RLS
+          const { data: newMemberships } = await adminSupabase
+            .from('team_members')
+            .select('team_id, role, teams(id, name, plan)')
+            .eq('team_id', newTeam.id)
+            .eq('user_id', user.id);
+
+          if (newMemberships && newMemberships.length > 0) {
+            membershipsList = newMemberships;
+            allTeams = membershipsList
+              .map((m) => {
+                const t = m.teams as unknown;
+                return Array.isArray(t) ? t[0] : (t as { id: string; name: string; plan: string } | null);
+              })
+              .filter((t): t is { id: string; name: string; plan: string } => !!t && !!t.id);
+          }
+        }
+      }
+    }
+
+    if (allTeams.length > 0) {
         // Lire le cookie d'espace actif
         const activeTeamId = cookies().get('papyrus:active-team-id')?.value;
         const foundActive = allTeams.find((t) => t.id === activeTeamId);
@@ -45,17 +91,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           activeTeam = allTeams[0];
         }
         teamName = activeTeam.name;
-      } else {
-        teamName = 'Mon équipe';
-        activeTeam = { id: user.id, name: teamName, plan: 'free' };
-        allTeams = [activeTeam];
       }
-    } else {
-      teamName = 'Mon équipe';
-      activeTeam = { id: user.id, name: teamName, plan: 'free' };
-      allTeams = [activeTeam];
     }
-  }
 
   return (
     <div className="flex h-screen overflow-hidden">

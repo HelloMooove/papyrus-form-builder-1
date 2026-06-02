@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   FileText,
   Settings,
@@ -33,7 +33,7 @@ import type { Workspace, Form } from '@/types';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
-import { createForm } from '@/lib/store';
+import { createForm, createTeam, updateTeamName } from '@/lib/store';
 
 interface Props {
   teamName?: string;
@@ -45,6 +45,8 @@ interface Props {
 export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeWorkspaceId = searchParams.get('workspace');
   const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
 
   // Liste des espaces
@@ -60,16 +62,24 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
-  // Dropdown menu d'options actif
+  // Dropdown menu d'options de workspace actif
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [workspaceDropdownPosition, setWorkspaceDropdownPosition] = useState<{ top: number; left: number } | null>(null);
+  const workspaceMenuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  // Suppression modal
+  const [deletingWorkspace, setDeletingWorkspace] = useState<Workspace | null>(null);
+
+  // Modal de gestion des membres
+  const [managingWorkspace, setManagingWorkspace] = useState<Workspace | null>(null);
+  const [workspaceMembers, setWorkspaceMembers] = useState<any[]>([]);
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [memberLoading, setMemberLoading] = useState(false);
 
   // Menu contextuel formulaire actif
   const [activeFormMenuId, setActiveFormMenuId] = useState<string | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
   const formMenuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-
-  // Suppression modal
-  const [deletingWorkspace, setDeletingWorkspace] = useState<Workspace | null>(null);
 
   // Liste de tous les formulaires Supabase pour filtrage par équipe en mode non-local
   const [allForms, setAllForms] = useState<Form[]>([]);
@@ -82,11 +92,15 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
       list = (allTeams || []).map((t) => ({
         id: t.id,
         name: t.name,
-        scope: 'team',
-        is_deletable: false,
+        scope: t.name === 'Mon espace' ? 'personal' : 'team',
+        is_deletable: t.name !== 'Mon espace',
         created_by: userId || '',
         created_at: ''
-      }));
+      })).sort((a, b) => {
+        if (a.name === 'Mon espace') return -1;
+        if (b.name === 'Mon espace') return 1;
+        return 0;
+      });
     }
     setWorkspaces(list);
     
@@ -116,7 +130,7 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
 
     initWorkspaces();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLocal]);
+  }, [isLocal, allTeams]);
 
   // Écouter les changements de workspaces localStorage
   useEffect(() => {
@@ -135,7 +149,7 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
     };
   }, [isLocal]);
 
-  // Charger tous les formulaires Supabase en arrière-plan en mode non-local
+  // Charger tous les formulaires et recharger les workspaces en cas de changement
   useEffect(() => {
     async function loadAllForms() {
       if (!isLocal) {
@@ -143,17 +157,27 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
           const { listForms } = await import('@/lib/store');
           const formsList = await listForms();
           setAllForms(formsList);
+          // Émettre un événement personnalisé quand les formulaires sont chargées
+          window.dispatchEvent(new CustomEvent('papyrus:forms-loaded'));
         } catch (err) {
           console.error("Failed to load forms in Sidebar:", err);
         }
+      } else {
+        // En mode local, recharger les workspaces pour mettre à jour les formulaires
+        loadWorkspaces();
       }
     }
     loadAllForms();
 
     // Recharger sur évènement forms-changed
-    window.addEventListener('papyrus:forms-changed', loadAllForms);
+    const handleFormsChanged = () => {
+      loadAllForms();
+    };
+    window.addEventListener('papyrus:forms-changed', handleFormsChanged);
+    window.addEventListener('papyrus:form-created', handleFormsChanged);
     return () => {
-      window.removeEventListener('papyrus:forms-changed', loadAllForms);
+      window.removeEventListener('papyrus:forms-changed', handleFormsChanged);
+      window.removeEventListener('papyrus:form-created', handleFormsChanged);
     };
   }, [isLocal]);
 
@@ -167,25 +191,27 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
     if (!newWorkspaceName.trim()) return;
 
     try {
-      let userId = 'local-user';
-
-      if (!isLocal) {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        userId = user?.id || 'local-user';
+      if (isLocal) {
+        createWorkspace({
+          name: newWorkspaceName.trim(),
+          scope: 'team',
+          is_deletable: true,
+          created_by: 'local-user'
+        });
+      } else {
+        await createTeam(newWorkspaceName.trim());
       }
-
-      createWorkspace({
-        name: newWorkspaceName.trim(),
-        scope: 'team',
-        is_deletable: true,
-        created_by: userId
-      });
       setNewWorkspaceName('');
       setIsCreating(false);
-      loadWorkspaces();
+      
+      if (!isLocal) {
+        router.refresh();
+      } else {
+        loadWorkspaces();
+      }
       toast.success('Workspace créé avec succès !');
     } catch (err) {
+      console.error(err);
       toast.error('Erreur lors de la création du workspace');
     }
   };
@@ -197,49 +223,164 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
     setActiveMenuId(null);
   };
 
-  const handleRenameWorkspace = (e: React.FormEvent) => {
+  const handleRenameWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!renameValue.trim() || !renamingId) return;
 
     try {
-      updateWorkspace(renamingId, { name: renameValue.trim() });
-      setRenamingId(null);
-      loadWorkspaces();
+      if (isLocal) {
+        updateWorkspace(renamingId, { name: renameValue.trim() });
+        setRenamingId(null);
+        loadWorkspaces();
+      } else {
+        const res = await fetch('/api/teams', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamId: renamingId, name: renameValue.trim() })
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Erreur lors du renommage');
+        }
+        setRenamingId(null);
+        window.location.reload();
+      }
       toast.success('Workspace renommé !');
-    } catch (err) {
-      toast.error('Erreur lors de la modification');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Erreur lors de la modification');
     }
   };
 
-  const handleDeleteWorkspaceConfirm = () => {
+  const handleDeleteWorkspaceConfirm = async () => {
     if (!deletingWorkspace) return;
 
     try {
-      deleteWorkspace(deletingWorkspace.id);
-      setDeletingWorkspace(null);
-      loadWorkspaces();
+      if (isLocal) {
+        deleteWorkspace(deletingWorkspace.id);
+        setDeletingWorkspace(null);
+        loadWorkspaces();
+      } else {
+        const res = await fetch('/api/teams', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamId: deletingWorkspace.id })
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Erreur lors de la suppression');
+        }
+        setDeletingWorkspace(null);
+      }
       toast.success('Workspace supprimé.');
-      router.push('/dashboard');
+      window.location.href = '/dashboard';
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Erreur lors de la suppression');
+    }
+  };
+  // Fonction pour charger les membres de l'équipe
+  const loadMembers = async (workspaceId: string) => {
+    try {
+      if (isLocal) {
+        const { getMembers } = await import('@/lib/store/local-workspaces');
+        setWorkspaceMembers(getMembers(workspaceId));
+      } else {
+        const { listTeamMembers } = await import('@/lib/store');
+        const list = await listTeamMembers(workspaceId);
+        setWorkspaceMembers(list);
+      }
     } catch (err) {
-      toast.error('Erreur lors de la suppression');
+      console.error('Error loading workspace members:', err);
     }
   };
 
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberEmail.trim() || !managingWorkspace) return;
+    setMemberLoading(true);
+
+    try {
+      if (isLocal) {
+        const { addMember } = await import('@/lib/store/local-workspaces');
+        addMember({
+          user_id: `user-${Date.now()}`,
+          workspace_id: managingWorkspace.id,
+          role: 'member',
+          name: 'Nouveau membre',
+          email: newMemberEmail.trim()
+        });
+      } else {
+        const { addTeamMember } = await import('@/lib/store');
+        await addTeamMember(managingWorkspace.id, newMemberEmail.trim(), 'member');
+      }
+      setNewMemberEmail('');
+      await loadMembers(managingWorkspace.id);
+      toast.success('Membre invité avec succès !');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Erreur lors de l'invitation");
+    } finally {
+      setMemberLoading(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!managingWorkspace) return;
+    if (confirm('Retirer ce membre de cet espace de travail ?')) {
+      try {
+        if (isLocal) {
+          const { removeMember } = await import('@/lib/store/local-workspaces');
+          removeMember(managingWorkspace.id, userId);
+        } else {
+          const { deleteTeamMember } = await import('@/lib/store');
+          await deleteTeamMember(managingWorkspace.id, userId);
+        }
+        await loadMembers(managingWorkspace.id);
+        toast.success('Membre retiré.');
+      } catch (err) {
+        console.error(err);
+        toast.error('Erreur lors du retrait du membre');
+      }
+    }
+  };
+
+  // Positionnement du dropdown de workspace
+  const handleOpenWorkspaceMenu = (wsId: string, buttonElement: HTMLButtonElement) => {
+    const rect = buttonElement.getBoundingClientRect();
+    const dropdownWidth = 160;
+
+    let left = rect.left;
+    const top = rect.bottom + 4;
+
+    if (left + dropdownWidth > window.innerWidth - 16) {
+      left = window.innerWidth - dropdownWidth - 16;
+    }
+
+    if (left < 16) {
+      left = 16;
+    }
+
+    setWorkspaceDropdownPosition({ top, left });
+    setActiveMenuId(wsId);
+  };
+
+  const handleCloseWorkspaceMenu = () => {
+    setActiveMenuId(null);
+    setWorkspaceDropdownPosition(null);
+  };
   // Fonction pour ouvrir le dropdown du formulaire avec positionnement dynamique
   const handleOpenFormMenu = (formId: string, buttonElement: HTMLButtonElement) => {
     const rect = buttonElement.getBoundingClientRect();
     const dropdownWidth = 180; // Largeur minimum du dropdown
 
-    // Position de base : en bas à gauche du bouton
     let left = rect.left;
     const top = rect.bottom + 4;
 
-    // Ajuster si le dropdown dépasse du côté droit de l'écran
     if (left + dropdownWidth > window.innerWidth - 16) {
       left = window.innerWidth - dropdownWidth - 16;
     }
 
-    // Ajuster si le dropdown dépasse du côté gauche de l'écran
     if (left < 16) {
       left = 16;
     }
@@ -272,17 +413,11 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
   // État pour l'utilisateur Supabase
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // Lire le nom d'entreprise depuis localStorage
-  const getCompanyName = () => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('papyrus_user_company') || null;
-  };
 
-  const [companyName, setCompanyName] = useState<string | null>(null);
 
-  useEffect(() => {
-    setCompanyName(getCompanyName());
-  }, []);
+
+
+
 
   // Récupérer l'utilisateur Supabase connecté
   // TODO: v0.2 Supabase — remplacer 'Utilisateur local' par le vrai email de l'utilisateur connecté (supabase.auth.getUser())
@@ -299,12 +434,17 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
   // Fonction pour créer un nouveau formulaire dans un workspace spécifique
   const handleCreateFormInWorkspace = async (workspaceId: string) => {
     try {
+      // Ouvrir l'accordion du workspace pour afficher le formulaire
+      setOpenAccordions((prev) => ({ ...prev, [workspaceId]: true }));
+
       if (!isLocal) {
         document.cookie = `papyrus:active-team-id=${workspaceId}; path=/; max-age=31536000; SameSite=Lax`;
       }
       const newForm = await createForm('Nouveau formulaire', workspaceId);
+
       router.push(`/forms/${newForm.id}/edit`);
     } catch (err) {
+      console.error('Error creating form:', err);
       toast.error('Erreur lors de la création du formulaire');
     }
   };
@@ -396,6 +536,68 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
     );
   };
 
+  // Composant dropdown de workspace rendu dans un portail
+  const WorkspaceDropdownMenu = ({ ws, onClose }: { ws: Workspace; onClose: () => void }) => {
+    if (!workspaceDropdownPosition) return null;
+    const isPersonal = ws.scope === 'personal';
+
+    return createPortal(
+      <>
+        {/* Overlay pour fermer le menu */}
+        <div
+          className="fixed inset-0 z-[9998]"
+          onClick={onClose}
+        />
+        {/* Menu dropdown */}
+        <div
+          className="fixed z-[9999] min-w-[160px] rounded-lg border border-border bg-bg-surface p-3 animate-in fade-in duration-100"
+          style={{
+            top: workspaceDropdownPosition.top,
+            left: workspaceDropdownPosition.left,
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+          }}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+              handleStartRename(ws, e);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition rounded"
+          >
+            Renommer
+          </button>
+          {!isPersonal && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                  setManagingWorkspace(ws);
+                  loadMembers(ws.id);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition rounded"
+              >
+                Membres
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                  setDeletingWorkspace(ws);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger hover:bg-danger/5 transition font-semibold rounded"
+              >
+                Supprimer
+              </button>
+            </>
+          )}
+        </div>
+      </>,
+      document.body
+    );
+  };
+
   return (
     <aside className="flex h-full w-96 flex-col border-r border-border bg-bg-surface select-none">
       {/* Logo Papyrus */}
@@ -444,11 +646,11 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
                   <div
                     onClick={(e) => {
                       if (renamingId === ws.id) return;
-                      router.push(`/workspaces/${ws.id}`);
+                      router.push(`/forms?workspace=${ws.id}`);
                     }}
                     className={cn(
                       'flex items-center justify-between w-full px-4 h-14 text-xl font-medium cursor-pointer rounded-md transition hover:bg-bg-elevated text-text-secondary hover:text-text-primary',
-                      pathname === `/workspaces/${ws.id}` && 'bg-bg-elevated text-text-primary font-semibold'
+                      pathname === '/forms' && activeWorkspaceId === ws.id && 'bg-bg-elevated text-text-primary font-semibold'
                     )}
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -481,62 +683,27 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
                     {/* Options / Accordion chevrons */}
                     <div className="flex items-center gap-1">
                       {/* Bouton options 3 points */}
-                      {renamingId !== ws.id && (
+                      {renamingId !== ws.id && !isPersonal && (
                         <div className="relative">
                           <button
+                            ref={(el) => {
+                              workspaceMenuButtonRefs.current[ws.id] = el;
+                            }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setActiveMenuId(activeMenuId === ws.id ? null : ws.id);
+                              e.preventDefault();
+                              const buttonElement = e.currentTarget;
+                              if (activeMenuId === ws.id) {
+                                handleCloseWorkspaceMenu();
+                              } else {
+                                handleOpenWorkspaceMenu(ws.id, buttonElement);
+                              }
                             }}
                             className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-border text-text-tertiary hover:text-text-primary transition"
                             aria-label="Options de l'espace"
                           >
                             <MoreHorizontal className="h-4 w-4" />
                           </button>
-
-                          {activeMenuId === ws.id && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-[100]"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMenuId(null);
-                                }}
-                              />
-                              <div className="absolute left-full top-0 ml-1 w-32 rounded-lg border border-border bg-bg-surface py-1 shadow-lg z-[110] animate-in fade-in slide-in-from-left-1 duration-100">
-                                <button
-                                  onClick={(e) => handleStartRename(ws, e)}
-                                  className="flex w-full items-center px-3 py-1.5 text-left text-[11px] text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition"
-                                >
-                                  Renommer
-                                </button>
-                                {!isPersonal && (
-                                  <>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveMenuId(null);
-                                        router.push(`/workspaces/${ws.id}?tab=settings`);
-                                      }}
-                                      className="flex w-full items-center px-3 py-1.5 text-left text-[11px] text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition"
-                                    >
-                                      Paramètres
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveMenuId(null);
-                                        setDeletingWorkspace(ws);
-                                      }}
-                                      className="flex w-full items-center px-3 py-1.5 text-left text-[11px] text-danger hover:bg-danger/5 transition font-semibold"
-                                    >
-                                      Supprimer
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </>
-                          )}
                         </div>
                       )}
 
@@ -691,18 +858,12 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
           <div className="flex items-center gap-2.5 min-w-0">
             {/* Initial circle */}
             <div className="flex h-12 w-12 min-w-[48px] items-center justify-center rounded-full bg-mooove-navy text-mooove-ice font-bold font-display text-xl">
-              {currentUser?.email ?
-                currentUser.email.charAt(0).toUpperCase() + (currentUser.email.split('@')[0].charAt(1) || '').toUpperCase() :
-                'UL'
-              }
+              {(isLocal ? 'LO' : (userEmail || currentUser?.email || 'U')).charAt(0).toUpperCase()}
             </div>
             {/* Info text */}
             <div className="flex flex-col leading-tight truncate">
               <span className="font-display text-xl font-medium text-text-primary truncate">
-                {currentUser?.user_metadata?.full_name || currentUser?.email || 'Utilisateur local'}
-              </span>
-              <span className="text-lg text-text-tertiary truncate">
-                Admin
+                {isLocal ? 'local@papyrus.dev' : (userEmail || currentUser?.email || 'Utilisateur')}
               </span>
             </div>
           </div>
@@ -760,6 +921,93 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
           formId={activeFormMenuId}
           onClose={handleCloseFormMenu}
         />
+      )}
+
+      {/* Dropdown menu des workspaces rendu dans un portail */}
+      {activeMenuId && workspaces.find(w => w.id === activeMenuId) && (
+        <WorkspaceDropdownMenu
+          ws={workspaces.find(w => w.id === activeMenuId)!}
+          onClose={handleCloseWorkspaceMenu}
+        />
+      )}
+
+      {/* Modal de Gestion des Membres du Workspace */}
+      {managingWorkspace && (
+        <Modal
+          isOpen={!!managingWorkspace}
+          onClose={() => setManagingWorkspace(null)}
+          title={`Gérer les membres — ${managingWorkspace.name}`}
+        >
+          <div className="space-y-6">
+            {/* Formulaire d'invitation */}
+            <form onSubmit={handleAddMember} className="space-y-3">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary">
+                Inviter un membre
+              </span>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  required
+                  placeholder="collaborateur@mooove.live"
+                  value={newMemberEmail}
+                  onChange={(e) => setNewMemberEmail(e.target.value)}
+                  className="flex-1 h-10 px-3 border border-border bg-bg-surface text-sm rounded-md focus:border-accent focus:outline-none"
+                />
+                <Button type="submit" variant="cta" loading={memberLoading} size="sm">
+                  Inviter
+                </Button>
+              </div>
+            </form>
+
+            {/* Liste des membres */}
+            <div className="space-y-3">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary">
+                Membres de l'espace ({workspaceMembers.length})
+              </span>
+              <div className="border border-border rounded-lg bg-bg-surface/50 divide-y divide-border overflow-hidden max-h-[220px] overflow-y-auto">
+                {workspaceMembers.length === 0 ? (
+                  <span className="block p-4 text-sm text-text-tertiary text-center">
+                    Chargement des membres...
+                  </span>
+                ) : (
+                  workspaceMembers.map((member) => (
+                    <div key={member.user_id} className="flex items-center justify-between p-3.5">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-medium text-text-primary truncate">
+                          {member.email}
+                        </span>
+                        <span className="text-[10px] text-text-tertiary uppercase font-semibold">
+                          {member.role}
+                        </span>
+                      </div>
+                      
+                      {/* Bouton de retrait (pas pour le créateur ou si local-user) */}
+                      {member.user_id !== currentUser?.id && member.user_id !== 'local-user' && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(member.user_id)}
+                          className="text-xs text-danger hover:underline font-semibold"
+                        >
+                          Retirer
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-border/60">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setManagingWorkspace(null)}
+              >
+                Fermer
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </aside>
   );

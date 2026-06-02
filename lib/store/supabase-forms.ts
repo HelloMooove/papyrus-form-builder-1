@@ -15,6 +15,18 @@ function emptyMultilingual(value = ''): MultilingualText {
   return { fr: value };
 }
 
+function notifyFormsChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('papyrus:forms-changed'));
+  }
+}
+
+function notifyFormCreated() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('papyrus:form-created'));
+  }
+}
+
 async function getCurrentUser() {
   const supabase = createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -33,44 +45,27 @@ export async function listForms(): Promise<Form[]> {
   const supabase = createClient();
   const user = await getCurrentUser();
 
-  // 1. Lire d'abord le cookie actif
-  const activeId = getActiveTeamId();
-  let teamId = activeId;
+  // Récupérer toutes les équipes de l'utilisateur
+  const { data: memberships, error: memberError } = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', user.id);
 
-  // Valider que l'ID de l'équipe active est un UUID valide et que l'utilisateur en est membre
-  let isValidMember = false;
-  if (teamId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId)) {
-    const { data: memberCheck } = await supabase
-      .from('team_members')
-      .select('team_id')
-      .eq('user_id', user.id)
-      .eq('team_id', teamId)
-      .maybeSingle();
-    
-    if (memberCheck) {
-      isValidMember = true;
-    }
+  if (memberError) {
+    console.error('Error fetching user teams in listForms:', memberError);
   }
 
-  if (!isValidMember) {
-    // Récupérer le team_id réel de l'utilisateur depuis team_members
-    const { data: membership, error: memberError } = await supabase
-      .from('team_members')
-      .select('team_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
+  const teamIds = memberships?.map((m) => m.team_id) || [];
 
-    if (memberError) {
-      console.error('Error fetching user team in listForms:', memberError);
-    }
-
-    teamId = membership?.team_id || user.id;
+  // Fallback si aucune appartenance n'est trouvée
+  if (teamIds.length === 0) {
+    teamIds.push(user.id);
   }
 
   const { data: forms, error } = await supabase
     .from('forms')
     .select('*')
-    .eq('team_id', teamId)
+    .in('team_id', teamIds)
     .order('updated_at', { ascending: false });
 
   if (error) {
@@ -150,48 +145,13 @@ export async function getForm(id: string): Promise<Form | null> {
   };
 }
 
-export async function createForm(title = 'Nouveau formulaire'): Promise<Form> {
+export async function createForm(title = 'Nouveau formulaire', customTeamId?: string): Promise<Form> {
   const supabase = createClient();
   const user = await getCurrentUser();
   const now = new Date().toISOString();
 
-  // 1. Lire d'abord le cookie actif
-  const activeId = getActiveTeamId();
-  let teamId = activeId;
-
-  // Valider que l'ID de l'équipe active est un UUID valide et que l'utilisateur en est membre
-  let isValidMember = false;
-  if (teamId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId)) {
-    const { data: memberCheck } = await supabase
-      .from('team_members')
-      .select('team_id')
-      .eq('user_id', user.id)
-      .eq('team_id', teamId)
-      .maybeSingle();
-    
-    if (memberCheck) {
-      isValidMember = true;
-    }
-  }
-
-  if (!isValidMember) {
-    const { data: membership, error: memberError } = await supabase
-      .from('team_members')
-      .select('team_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (memberError) {
-      console.error('Error fetching user team:', memberError);
-      throw memberError;
-    }
-
-    if (!membership) {
-      console.error('No team membership found for user:', user.id);
-      throw new Error(`No team found for user ${user.id}`);
-    }
-    teamId = membership.team_id;
-  }
+  // Utiliser le customTeamId s'il est passé, sinon lire le cookie actif, sinon fallback sur l'ID de l'utilisateur
+  const teamId = customTeamId || getActiveTeamId() || user.id;
 
   const formData = {
     team_id: teamId,
@@ -226,6 +186,9 @@ export async function createForm(title = 'Nouveau formulaire'): Promise<Form> {
     .single();
 
   if (error) throw error;
+
+  notifyFormsChanged();
+  notifyFormCreated();
 
   return {
     ...form,
@@ -295,7 +258,9 @@ export async function updateForm(id: string, patch: Partial<Form>): Promise<Form
   }
 
   // Retourner le formulaire complet mis à jour
-  return await getForm(id);
+  const updatedForm = await getForm(id);
+  notifyFormsChanged();
+  return updatedForm;
 }
 
 export async function deleteForm(id: string): Promise<void> {
@@ -307,6 +272,8 @@ export async function deleteForm(id: string): Promise<void> {
     .eq('id', id);
 
   if (error) throw error;
+
+  notifyFormsChanged();
 }
 
 /** Ajoute un champ à un formulaire et renvoie le formulaire à jour. */
@@ -373,7 +340,9 @@ export async function addField(
     .eq('id', formId);
 
   // Retourner le formulaire à jour
-  return await getForm(formId);
+  const updated = await getForm(formId);
+  notifyFormsChanged();
+  return updated;
 }
 
 export async function updateField(formId: string, fieldId: string, patch: Partial<Field>): Promise<Form | null> {
@@ -395,7 +364,9 @@ export async function updateField(formId: string, fieldId: string, patch: Partia
     .eq('id', formId);
 
   // Retourner le formulaire à jour
-  return await getForm(formId);
+  const updated = await getForm(formId);
+  notifyFormsChanged();
+  return updated;
 }
 
 export async function deleteField(formId: string, fieldId: string): Promise<Form | null> {
@@ -426,7 +397,9 @@ export async function deleteField(formId: string, fieldId: string): Promise<Form
     .update({ updated_at: new Date().toISOString() })
     .eq('id', formId);
 
-  return await getForm(formId);
+  const updated = await getForm(formId);
+  notifyFormsChanged();
+  return updated;
 }
 
 /** Réordonne les champs selon la liste d'IDs fournie. */
@@ -457,7 +430,9 @@ export async function reorderFields(formId: string, orderedIds: string[]): Promi
     .eq('id', formId);
 
   // Retourner le formulaire à jour
-  return await getForm(formId);
+  const updated = await getForm(formId);
+  notifyFormsChanged();
+  return updated;
 }
 
 /** Duplique un champ et l'insère juste après l'original. Renvoie l'ID du nouveau champ. */
@@ -506,6 +481,7 @@ export async function duplicateField(
     .eq('id', formId);
 
   const updated = await getForm(formId);
+  notifyFormsChanged();
   return updated ? { form: updated, newFieldId: newId } : null;
 }
 
@@ -517,23 +493,30 @@ export function newOptionId(): string {
 /**
  * Duplique un formulaire entier (nouveau ID, nouveau slug, statut brouillon).
  */
-export async function cloneForm(formId: string): Promise<Form | null> {
+export async function cloneForm(formId: string, customTeamId?: string): Promise<Form | null> {
   const original = await getForm(formId);
   if (!original) return null;
 
   const user = await getCurrentUser();
   const now = new Date().toISOString();
-  const newId = uuid();
   const supabase = createClient();
 
-  // Récupérer le team_id réel de l'utilisateur depuis team_members
-  const { data: membership } = await supabase
-    .from('team_members')
-    .select('team_id')
-    .eq('user_id', user.id)
-    .single();
+  let teamId = customTeamId;
 
-  const teamId = membership?.team_id || user.id;
+  if (!teamId) {
+    // Si aucun teamId n'est spécifié, utiliser celui du formulaire d'origine
+    teamId = original.team_id;
+
+    // Si le formulaire d'origine n'a pas de team_id, récupérer le team principal de l'utilisateur
+    if (!teamId) {
+      const { data: membership } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      teamId = membership?.team_id || user.id;
+    }
+  }
 
   const clonedData = {
     team_id: teamId,
@@ -595,7 +578,9 @@ export async function cloneForm(formId: string): Promise<Form | null> {
     if (rulesError) throw rulesError;
   }
 
-  return await getForm(cloned.id);
+  const clonedForm = await getForm(cloned.id);
+  notifyFormsChanged();
+  return clonedForm;
 }
 
 /** Archive un formulaire — passe le statut à `closed`. Réversible via `unarchiveForm`. */
@@ -679,13 +664,12 @@ import type { Team } from '@/types';
 export async function createTeam(name: string): Promise<Team> {
   const supabase = createClient();
   const user = await getCurrentUser();
+  const teamId = uuid();
 
-  // 1. Créer la team
-  const { data: team, error: teamError } = await supabase
+  // 1. Créer la team (sans select(), pour éviter que le RLS de SELECT ne bloque avant que le membre ne soit inséré !)
+  const { error: teamError } = await supabase
     .from('teams')
-    .insert({ name, plan: 'free' })
-    .select()
-    .single();
+    .insert({ id: teamId, name, plan: 'free' });
 
   if (teamError) throw teamError;
 
@@ -694,13 +678,25 @@ export async function createTeam(name: string): Promise<Team> {
     .from('team_members')
     .insert({
       user_id: user.id,
-      team_id: team.id,
+      team_id: teamId,
       role: 'admin'
     });
 
-  if (memberError) throw memberError;
+  if (memberError) {
+    // Rollback manuel de l'équipe si l'association de membre a échoué
+    await supabase.from('teams').delete().eq('id', teamId);
+    throw memberError;
+  }
 
-  // 3. Définir le cookie actif sur le client
+  // 3. Retourner l'objet team construit localement pour éviter le bug RLS de lecture côté client
+  const team: Team = {
+    id: teamId,
+    name,
+    plan: 'free',
+    created_at: new Date().toISOString()
+  };
+
+  // 4. Définir le cookie actif sur le client
   if (typeof document !== 'undefined') {
     document.cookie = `papyrus:active-team-id=${team.id}; path=/; max-age=31536000; SameSite=Lax`;
   }
@@ -719,69 +715,23 @@ export async function updateTeamName(teamId: string, name: string): Promise<void
 }
 
 export async function listTeamMembers(teamId: string): Promise<any[]> {
-  const supabase = createClient();
-
-  // Récupérer les membres de l'équipe
-  const { data: members, error: membersError } = await supabase
-    .from('team_members')
-    .select('user_id, role, joined_at')
-    .eq('team_id', teamId);
-
-  if (membersError) throw membersError;
-
-  // Tenter de récupérer les emails des membres depuis la table profiles
-  try {
-    const userIds = members.map((m) => m.user_id);
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('id, email')
-      .in('id', userIds);
-
-    if (profilesError) throw profilesError;
-
-    const emailMap = new Map(profiles.map((p) => [p.id, p.email]));
-    return members.map((m) => ({
-      ...m,
-      email: emailMap.get(m.user_id) || `Membre (ID: ${m.user_id.slice(0, 8)}...)`
-    }));
-  } catch (err) {
-    // Si la table profiles n'existe pas encore ou qu'il y a une erreur RLS
-    console.warn("Profiles table not available, falling back to user IDs:", err);
-    return members.map((m) => ({
-      ...m,
-      email: `Membre (ID: ${m.user_id.slice(0, 8)}...)`
-    }));
+  const res = await fetch(`/api/members?teamId=${teamId}`);
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Erreur lors de la récupération des membres');
   }
+  return await res.json();
 }
 
 export async function addTeamMember(teamId: string, email: string, role: 'admin' | 'member' | 'reader' = 'member'): Promise<void> {
-  const supabase = createClient();
-
-  // 1. Chercher l'utilisateur par email dans la table profiles
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('email', email.trim().toLowerCase())
-    .single();
-
-  if (profileError || !profile) {
-    throw new Error("Aucun utilisateur inscrit sous cette adresse e-mail.");
-  }
-
-  // 2. Ajouter l'utilisateur à l'équipe
-  const { error: insertError } = await supabase
-    .from('team_members')
-    .insert({
-      user_id: profile.id,
-      team_id: teamId,
-      role
-    });
-
-  if (insertError) {
-    if (insertError.code === '23505') {
-      throw new Error("Cet utilisateur est déjà membre de cet espace de travail.");
-    }
-    throw insertError;
+  const res = await fetch('/api/members', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ teamId, email, role })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || "Erreur lors de l'invitation");
   }
 }
 
@@ -797,12 +747,13 @@ export async function updateTeamMemberRole(teamId: string, userId: string, role:
 }
 
 export async function deleteTeamMember(teamId: string, userId: string): Promise<void> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('team_members')
-    .delete()
-    .eq('team_id', teamId)
-    .eq('user_id', userId);
-
-  if (error) throw error;
+  const res = await fetch('/api/members', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ teamId, userId })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Erreur lors de la suppression du membre');
+  }
 }

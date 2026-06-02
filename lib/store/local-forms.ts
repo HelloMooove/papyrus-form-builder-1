@@ -96,6 +96,9 @@ export function createForm(title = 'Nouveau formulaire', workspace_id?: string):
   const all = readAll();
   all.push(form);
   writeAll(all);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('papyrus:form-created'));
+  }
   return form;
 }
 
@@ -234,7 +237,7 @@ export function newOptionId(): string {
  * Les champs sont copiés tels quels — pas besoin de remapper leurs IDs car ils restent
  * cohérents au sein du nouveau form.
  */
-export function cloneForm(formId: string): Form | null {
+export function cloneForm(formId: string, workspace_id?: string): Form | null {
   const original = getForm(formId);
   if (!original) return null;
   const now = new Date().toISOString();
@@ -242,6 +245,7 @@ export function cloneForm(formId: string): Form | null {
   const cloned: Form = {
     ...original,
     id: newId,
+    workspace_id: workspace_id || original.workspace_id,
     title: `${original.title} (copie)`,
     slug: uniqueSlug(`${original.title}-copie`),
     status: 'draft',

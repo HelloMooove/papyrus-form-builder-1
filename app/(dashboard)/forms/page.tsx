@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FileText, Pencil, Plus, Search, Send, SquareSlash, Trash2, User, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -10,6 +10,7 @@ import { useForms } from '@/lib/store/use-forms';
 import { createForm, deleteForm } from '@/lib/store';
 import { CURRENT_USER_ID } from '@/lib/mode';
 import { cn } from '@/lib/utils';
+import { toast } from '@/components/ui/Toast';
 import type { Form, FormStatus } from '@/types';
 
 type OwnerFilter = 'mine' | 'shared';
@@ -30,10 +31,54 @@ const STATUS_FILTERS: { value: StatusFilter; label: string; icon: React.Componen
 export default function FormsListPage() {
   const allForms = useForms();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const workspaceIdFromUrl = searchParams.get('workspace');
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('mine');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>(CURRENT_USER_ID);
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+
+  // Charger le nom du workspace s'il y a un paramètre dans l'URL
+  useEffect(() => {
+    if (workspaceIdFromUrl) {
+      const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
+      if (!isLocal) {
+        const loadWorkspaceName = async () => {
+          try {
+            const { createClient } = await import('@/lib/supabase/client');
+            const supabase = createClient();
+            const { data: team } = await supabase
+              .from('teams')
+              .select('name')
+              .eq('id', workspaceIdFromUrl)
+              .maybeSingle();
+            if (team) {
+              setWorkspaceName(team.name);
+            }
+          } catch (err) {
+            console.error('Failed to load workspace name:', err);
+          }
+        };
+        loadWorkspaceName();
+      } else {
+        const loadLocalWorkspaceName = async () => {
+          try {
+            const { getWorkspace } = await import('@/lib/store/local-workspaces');
+            const ws = getWorkspace(workspaceIdFromUrl);
+            if (ws) {
+              setWorkspaceName(ws.name);
+            }
+          } catch (err) {
+            console.error('Failed to load local workspace name:', err);
+          }
+        };
+        loadLocalWorkspaceName();
+      }
+    } else {
+      setWorkspaceName(null);
+    }
+  }, [workspaceIdFromUrl]);
 
   // Charger l'ID utilisateur réel si en mode Supabase
   useEffect(() => {
@@ -55,8 +100,14 @@ export default function FormsListPage() {
     }
   }, []);
 
-  // On exclut les templates de la liste des formulaires.
-  const userForms = useMemo(() => allForms.filter((f) => !f.is_template), [allForms]);
+  // On exclut les templates de la liste des formulaires, et on filtre par workspace si spécifié.
+  const userForms = useMemo(() => {
+    let list = allForms.filter((f) => !f.is_template);
+    if (workspaceIdFromUrl) {
+      list = list.filter((f) => f.team_id === workspaceIdFromUrl || f.workspace_id === workspaceIdFromUrl);
+    }
+    return list;
+  }, [allForms, workspaceIdFromUrl]);
 
   // Compteurs propriété (mine / shared) — indépendants du filtre statut
   const ownerCounts = useMemo(() => {
@@ -100,11 +151,50 @@ export default function FormsListPage() {
 
   async function handleNew() {
     try {
-      const f = await createForm();
+      let targetWorkspaceId = workspaceIdFromUrl;
+
+      // Si aucun workspace n'est défini dans l'URL, on attribue "Mon espace" par défaut
+      if (!targetWorkspaceId) {
+        const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
+        if (!isLocal) {
+          const { createClient } = await import('@/lib/supabase/client');
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: memberships } = await supabase
+              .from('team_members')
+              .select('team_id, teams(name)')
+              .eq('user_id', user.id);
+
+            if (memberships && memberships.length > 0) {
+              const personalTeam = memberships.find((m) => {
+                const t = m.teams as unknown;
+                const teamObj = Array.isArray(t) ? t[0] : (t as { name: string } | null);
+                return teamObj?.name === 'Mon espace';
+              });
+
+              if (personalTeam) {
+                targetWorkspaceId = personalTeam.team_id;
+              } else {
+                targetWorkspaceId = memberships[0].team_id;
+              }
+            }
+          }
+        } else {
+          const { getWorkspaces } = await import('@/lib/store/local-workspaces');
+          const list = getWorkspaces('local-user');
+          const personal = list.find((w) => w.name === 'Mon espace');
+          if (personal) {
+            targetWorkspaceId = personal.id;
+          }
+        }
+      }
+
+      const f = await createForm('Nouveau formulaire', targetWorkspaceId || undefined);
       router.push(`/forms/${f.id}/edit`);
     } catch (error) {
       console.error('Failed to create form:', error);
-      // TODO: Afficher une notification d'erreur à l'utilisateur
+      toast.error('Erreur lors de la création du formulaire');
     }
   }
 
@@ -124,9 +214,11 @@ export default function FormsListPage() {
       {/* En-tête */}
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="font-display text-4xl">Formulaires</h1>
+          <h1 className="font-display text-4xl">
+            {workspaceName ? `Formulaires — ${workspaceName}` : 'Formulaires'}
+          </h1>
           <p className="papyrus-meta mt-1 text-sm not-italic">
-            i. {userForms.length} formulaire{userForms.length > 1 ? 's' : ''} au total
+            i. {userForms.length} formulaire{userForms.length > 1 ? 's' : ''} au total dans cet espace
           </p>
         </div>
         <Button variant="cta" iconLeft={<Plus className="h-4 w-4" />} onClick={handleNew}>
@@ -284,7 +376,7 @@ function FormsTable({
           {forms.map((f, i) => (
             <tr key={f.id} className={i < forms.length - 1 ? 'border-b border-dashed border-border' : ''}>
               <td className="px-4 py-3">
-                <Link href={`/forms/${f.id}`} className="font-display text-base hover:underline">
+                <Link href={`/forms/${f.id}/edit`} className="font-display text-base hover:underline">
                   {f.title}
                 </Link>
                 <div className="text-xs text-text-tertiary">/{f.slug}</div>

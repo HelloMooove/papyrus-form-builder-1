@@ -1,758 +1,620 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
 import {
-  Plus,
-  UserMinus,
-  UserPlus,
-  Shield,
-  Eye,
   FileText,
+  Plus,
+  Filter,
+  Search,
   Users,
-  Settings2,
-  Trash
+  User,
+  Pencil,
+  Check,
+  X
 } from 'lucide-react';
-import type { Workspace, Form, WorkspaceMember, WorkspaceRole } from '@/types';
-import {
-  getWorkspace,
-  getWorkspaceForms,
-  updateWorkspace,
-  deleteWorkspace,
-  getMembers,
-  addMember,
-  updateMemberRole,
-  removeMember
-} from '@/lib/store/local-workspaces';
-import { createForm, updateForm, deleteForm, cloneForm } from '@/lib/store';
-import { FormCard } from '@/components/dashboard/FormCard';
-import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toast';
-import { cn } from '@/lib/utils';
+import { formatCount } from '@/lib/utils';
+import { createForm, listTeamMembers, addTeamMember, deleteTeamMember } from '@/lib/store';
+import { getWorkspace, getWorkspaceForms } from '@/lib/store/local-workspaces';
+import type { Form, Workspace } from '@/types';
 
-type Tab = 'forms' | 'members' | 'settings';
+type FilterStatus = 'all' | 'published' | 'draft' | 'closed';
 
 export default function WorkspacePage() {
-  const params = useParams<{ id: string }>();
+  const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const workspaceId = params.id;
-  const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
-
-  const [currentUserId, setCurrentUserId] = useState<string>('local-user');
+  const workspaceId = params.id as string;
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [forms, setForms] = useState<Form[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab>('forms');
+  const [workspaceForms, setWorkspaceForms] = useState<Form[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
+  const [loading, setLoading] = useState(true);
 
-  // Filtre statut formulaire
-  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'published' | 'closed'>('all');
+  // États pour la gestion des membres du workspace
+  const [isManagingMembers, setIsManagingMembers] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [workspaceMembers, setWorkspaceMembers] = useState<any[]>([]);
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [memberLoading, setMemberLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // État d'invitation de membre
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteName, setInviteName] = useState('');
-  const [inviteRole, setInviteRole] = useState<WorkspaceRole>('member');
+  const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
 
-  // Modal suppression de membre
-  const [memberToRemove, setMemberToRemove] = useState<WorkspaceMember | null>(null);
-
-  // Modal suppression de workspace
-  const [showDeleteWorkspaceModal, setShowDeleteWorkspaceModal] = useState(false);
-
-  // Débounce pour le renommage de workspace
-  const [workspaceNameInput, setWorkspaceNameInput] = useState('');
-
-  // Charger les données du workspace et des formulaires
-  const loadWorkspaceData = async () => {
-    if (isLocal) {
-      const ws = getWorkspace(workspaceId);
-      if (!ws) {
-        toast.error('Espace de travail introuvable');
-        router.push('/dashboard');
-        return;
-      }
-      setWorkspace(ws);
-      setWorkspaceNameInput(ws.name);
-
-      const wsForms = getWorkspaceForms(workspaceId);
-      setForms(wsForms);
-    } else {
-      // Mode Supabase
-      try {
+  // Récupérer l'utilisateur Supabase connecté
+  useEffect(() => {
+    async function getCurrentUser() {
+      if (!isLocal) {
         const { createClient } = await import('@/lib/supabase/client');
         const supabase = createClient();
-        
-        // 1. Charger les infos de la team
-        const { data: team, error: teamError } = await supabase
-          .from('teams')
-          .select('*')
-          .eq('id', workspaceId)
-          .maybeSingle();
-
-        if (teamError || !team) {
-          toast.error('Espace de travail introuvable');
-          router.push('/dashboard');
-          return;
-        }
-
-        // 2. Charger les membres de la team
-        const { data: members = [] } = await supabase
-          .from('team_members')
-          .select('user_id, role, joined_at')
-          .eq('team_id', workspaceId);
-
-        // Récupérer les profils pour les emails
-        let membersWithEmail = [];
-        try {
-          const userIds = (members || []).map((m) => m.user_id);
-          const { data: profiles = [] } = await supabase
-            .from('profiles')
-            .select('id, email')
-            .in('id', userIds);
-          const emailMap = new Map((profiles || []).map((p) => [p.id, p.email]));
-          membersWithEmail = (members || []).map((m) => ({
-            ...m,
-            workspace_id: workspaceId,
-            email: emailMap.get(m.user_id) || `Membre (ID: ${m.user_id.slice(0, 8)}...)`,
-            name: emailMap.get(m.user_id)?.split('@')[0] || ''
-          }));
-        } catch {
-          membersWithEmail = (members || []).map((m) => ({
-            ...m,
-            workspace_id: workspaceId,
-            email: `Membre (ID: ${m.user_id.slice(0, 8)}...)`
-          }));
-        }
-
-        setWorkspace({
-          id: team.id,
-          name: team.name,
-          scope: 'team',
-          is_deletable: true,
-          created_by: '',
-          created_at: team.created_at,
-          members: membersWithEmail
-        });
-        setWorkspaceNameInput(team.name);
-
-        // 3. Charger les formulaires de la team
-        const { listForms } = await import('@/lib/store');
-        const allForms = await listForms();
-        setForms(allForms.filter((f) => f.team_id === workspaceId));
-      } catch (err) {
-        console.error("Failed to load workspace in Supabase mode:", err);
-        toast.error('Erreur lors du chargement de l\'espace');
+        const { data: { user } } = await supabase.auth.getUser();
+        setCurrentUser(user);
       }
     }
-  };
-
-  useEffect(() => {
-    loadWorkspaceData();
-    // Définir le cookie de l'équipe active
-    if (!isLocal) {
-      document.cookie = `papyrus:active-team-id=${workspaceId}; path=/; max-age=31536000; SameSite=Lax`;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
-
-  // Charger l'ID utilisateur réel si en mode Supabase pour la gestion des rôles
-  useEffect(() => {
-    async function loadUser() {
-      if (!isLocal) {
-        try {
-          const { createClient } = await import('@/lib/supabase/client');
-          const supabase = createClient();
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            setCurrentUserId(user.id);
-          }
-        } catch (error) {
-          console.error('Failed to load user session:', error);
-        }
-      }
-    }
-    loadUser();
+    getCurrentUser();
   }, [isLocal]);
 
-  // Synchroniser l'onglet actif avec le paramètre d'URL s'il existe
-  useEffect(() => {
-    const tabParam = searchParams.get('tab') as Tab;
-    if (tabParam && ['forms', 'members', 'settings'].includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
-  }, [searchParams]);
-
-  // Rôle de l'utilisateur actuel dans ce workspace
-  const currentUserMember = workspace?.members?.find((m) => m.user_id === currentUserId);
-  const currentUserRole: WorkspaceRole =
-    currentUserMember?.role || (workspace?.scope === 'personal' ? 'owner' : 'admin');
-  const isAdminOrOwner = currentUserRole === 'owner' || currentUserRole === 'admin';
-
-  // Redirection silencieuse si accès restreint à l'onglet Paramètres
-  useEffect(() => {
-    if (activeTab === 'settings' && workspace && !isAdminOrOwner) {
-      setActiveTab('forms');
-      toast.error('Accès refusé. Réservé aux administrateurs.');
-    }
-  }, [activeTab, workspace, isAdminOrOwner]);
-
-  // Effet pour sauvegarder automatiquement le nom du workspace (débounce 1s)
-  useEffect(() => {
-    if (!workspace || !workspaceNameInput.trim() || workspaceNameInput === workspace.name) return;
-
-    const timer = setTimeout(async () => {
+  // Fonction pour charger les membres de l'équipe
+  const loadMembers = async (id: string) => {
+    try {
       if (isLocal) {
-        updateWorkspace(workspace.id, { name: workspaceNameInput.trim() });
+        const { getMembers } = await import('@/lib/store/local-workspaces');
+        setWorkspaceMembers(getMembers(id));
       } else {
-        const { createClient } = await import('@/lib/supabase/client');
-        const supabase = createClient();
-        await supabase
-          .from('teams')
-          .update({ name: workspaceNameInput.trim() })
-          .eq('id', workspace.id);
+        const list = await listTeamMembers(id);
+        setWorkspaceMembers(list);
       }
-      toast.success('Nom enregistré avec succès !');
-      // Déclencher un événement pour rafraîchir la sidebar
-      window.dispatchEvent(new CustomEvent('papyrus:workspaces-changed'));
-      
-      // Mettre à jour l'état local du workspace pour refléter le changement de nom
-      setWorkspace((prev) => (prev ? { ...prev, name: workspaceNameInput.trim() } : null));
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [workspaceNameInput, workspace, isLocal]);
-
-  if (!workspace) return null;
-
-  // Actions formulaires
-  const handleCreateForm = async () => {
-    try {
-      const newForm = await createForm('Nouveau formulaire');
-      await updateForm(newForm.id, { workspace_id: workspace.id });
-      toast.success('Formulaire créé !');
-      router.push(`/forms/${newForm.id}/edit`);
-    } catch (error) {
-      console.error('Failed to create form:', error);
-      toast.error('Erreur lors de la création du formulaire');
+    } catch (err) {
+      console.error('Error loading workspace members:', err);
     }
   };
 
-  const handleEditForm = (formId: string) => {
-    router.push(`/forms/${formId}/edit`);
-  };
-
-  const handleDuplicateForm = async (formId: string) => {
-    try {
-      const cloned = await cloneForm(formId);
-      if (cloned) {
-        await updateForm(cloned.id, { workspace_id: workspace.id });
-        loadWorkspaceData();
-        toast.success('Formulaire dupliqué !');
-      } else {
-        toast.error('Erreur lors de la duplication');
-      }
-    } catch (error) {
-      console.error('Failed to duplicate form:', error);
-      toast.error('Erreur lors de la duplication');
-    }
-  };
-
-  const handleDeleteForm = async (formId: string) => {
-    try {
-      await deleteForm(formId);
-      loadWorkspaceData();
-      toast.success('Formulaire supprimé.');
-    } catch (error) {
-      console.error('Failed to delete form:', error);
-      toast.error('Erreur lors de la suppression');
-    }
-  };
-
-  // Actions membres
-  const handleInviteMember = async (e: React.FormEvent) => {
+  const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail.trim() || !inviteName.trim()) return;
+    if (!newMemberEmail.trim() || !workspace) return;
+    setMemberLoading(true);
 
     try {
       if (isLocal) {
+        const { addMember } = await import('@/lib/store/local-workspaces');
         addMember({
           user_id: `user-${Date.now()}`,
           workspace_id: workspace.id,
-          role: inviteRole,
-          name: inviteName.trim(),
-          email: inviteEmail.trim().toLowerCase()
+          role: 'member',
+          name: 'Nouveau membre',
+          email: newMemberEmail.trim()
         });
-        toast.success(`Invitation simulée pour ${inviteEmail} !`);
       } else {
-        const { addTeamMember } = await import('@/lib/store/supabase-forms');
-        await addTeamMember(workspace.id, inviteEmail.trim(), inviteRole as any);
-        toast.success(`Collaborateur ${inviteEmail} ajouté avec succès !`);
+        await addTeamMember(workspace.id, newMemberEmail.trim(), 'member');
       }
-
-      setInviteEmail('');
-      setInviteName('');
-      setInviteRole('member');
-      loadWorkspaceData();
-    } catch (err) {
+      setNewMemberEmail('');
+      await loadMembers(workspace.id);
+      toast.success('Membre invité avec succès !');
+    } catch (err: any) {
       console.error(err);
-      toast.error(err instanceof Error ? err.message : "Erreur lors de l'invitation");
+      toast.error(err.message || "Erreur lors de l'invitation");
+    } finally {
+      setMemberLoading(false);
     }
   };
 
-  const handleUpdateRole = async (userId: string, role: WorkspaceRole) => {
-    try {
-      if (isLocal) {
-        updateMemberRole(workspace.id, userId, role);
-      } else {
-        const { updateTeamMemberRole } = await import('@/lib/store/supabase-forms');
-        await updateTeamMemberRole(workspace.id, userId, role as any);
+  const handleRemoveMember = async (userId: string) => {
+    if (!workspace) return;
+    if (confirm('Retirer ce membre de cet espace de travail ?')) {
+      try {
+        if (isLocal) {
+          const { removeMember } = await import('@/lib/store/local-workspaces');
+          removeMember(workspace.id, userId);
+        } else {
+          await deleteTeamMember(workspace.id, userId);
+        }
+        await loadMembers(workspace.id);
+        toast.success('Membre retiré.');
+      } catch (err) {
+        console.error(err);
+        toast.error('Erreur lors du retrait du membre');
       }
+    }
+  };
+
+  // Charger le workspace et ses formulaires
+  useEffect(() => {
+    async function loadWorkspaceData() {
+      try {
+        const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
+        if (isLocal) {
+          const ws = getWorkspace(workspaceId);
+          if (!ws) {
+            router.push('/dashboard');
+            return;
+          }
+          setWorkspace(ws);
+
+          const forms = getWorkspaceForms(workspaceId);
+          setWorkspaceForms(forms);
+          setLoading(false);
+        } else {
+          // Mode Supabase
+          const { createClient } = await import('@/lib/supabase/client');
+          const supabase = createClient();
+
+          // Récupérer le team (workspace)
+          const { data: team, error: teamError } = await supabase
+            .from('teams')
+            .select('*')
+            .eq('id', workspaceId)
+            .maybeSingle();
+
+          if (teamError || !team) {
+            console.error('Team error:', teamError);
+            router.push('/dashboard');
+            return;
+          }
+
+          // Récupérer le nombre de membres
+          const { data: members } = await supabase
+            .from('team_members')
+            .select('*')
+            .eq('team_id', workspaceId);
+
+          setWorkspace({
+            id: team.id,
+            name: team.name,
+            scope: 'team',
+            is_deletable: false,
+            created_by: '',
+            created_at: team.created_at,
+            members: (members || []).map(m => ({
+              user_id: m.user_id,
+              workspace_id: m.team_id,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              role: m.role as any,
+              joined_at: m.joined_at
+            })),
+            form_count: 0
+          });
+
+          // Récupérer les formulaires de cette team
+          const { data: forms, error: formsError } = await supabase
+            .from('forms')
+            .select('*')
+            .eq('team_id', workspaceId)
+            .order('updated_at', { ascending: false });
+
+          if (formsError) {
+            console.error('Error fetching workspace forms:', formsError);
+            setWorkspaceForms([]);
+          } else {
+            // Récupérer les champs pour chaque formulaire (pour le nombre de champs affiché)
+            const formsWithFields = await Promise.all(
+              (forms || []).map(async (form) => {
+                const { data: fields = [] } = await supabase
+                  .from('fields')
+                  .select('id')
+                  .eq('form_id', form.id);
+                return {
+                  ...form,
+                  fields: fields
+                };
+              })
+            );
+            setWorkspaceForms(formsWithFields as any);
+          }
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error loading workspace:', error);
+        router.push('/dashboard');
+      }
+    }
+
+    loadWorkspaceData();
+
+    // Recharger sur changement de formulaires
+    const handleFormsChanged = () => {
       loadWorkspaceData();
-      toast.success('Rôle mis à jour avec succès');
-    } catch (err) {
-      toast.error('Erreur lors du changement de rôle');
+    };
+
+    window.addEventListener('papyrus:forms-changed', handleFormsChanged);
+    window.addEventListener('papyrus:workspaces-changed', handleFormsChanged);
+
+    return () => {
+      window.removeEventListener('papyrus:forms-changed', handleFormsChanged);
+      window.removeEventListener('papyrus:workspaces-changed', handleFormsChanged);
+    };
+  }, [workspaceId, router]);
+
+  // Formulaires filtrés
+  const filteredForms = useMemo(() => {
+    let filtered = workspaceForms.filter(form => !form.is_template);
+
+    // Filtre par statut
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(form => form.status === statusFilter);
     }
-  };
 
-  const handleRemoveMemberConfirm = async () => {
-    if (!memberToRemove) return;
+    // Filtre par recherche
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(form =>
+        form.title.toLowerCase().includes(search) ||
+        form.description?.toLowerCase().includes(search)
+      );
+    }
 
+    // Tri par date de modification desc
+    return filtered.sort((a, b) =>
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    );
+  }, [workspaceForms, statusFilter, searchTerm]);
+
+  // Stats
+  const stats = useMemo(() => {
+    const forms = workspaceForms.filter(f => !f.is_template);
+    return {
+      total: forms.length,
+      published: forms.filter(f => f.status === 'published').length,
+      draft: forms.filter(f => f.status === 'draft').length,
+      closed: forms.filter(f => f.status === 'closed').length
+    };
+  }, [workspaceForms]);
+
+  const handleNewForm = async () => {
     try {
-      if (isLocal) {
-        removeMember(workspace.id, memberToRemove.user_id);
-      } else {
-        const { deleteTeamMember } = await import('@/lib/store/supabase-forms');
-        await deleteTeamMember(workspace.id, memberToRemove.user_id);
-      }
-      setMemberToRemove(null);
-      loadWorkspaceData();
-      toast.success('Collaborateur retiré.');
-    } catch (err) {
-      toast.error('Erreur lors de la suppression');
+      // S'assurer que le workspace existe
+      const { initDefaultWorkspace } = await import('@/lib/store/local-workspaces');
+      initDefaultWorkspace('local-user');
+
+      const form = await createForm('Nouveau formulaire', workspaceId);
+      router.push(`/forms/${form.id}/edit`);
+    } catch (error) {
+      console.error('Failed to create form:', error);
     }
   };
 
-  // Actions Workspace Paramètres
-  const handleDeleteWorkspace = async () => {
-    try {
-      if (isLocal) {
-        deleteWorkspace(workspace.id);
-      } else {
-        const { createClient } = await import('@/lib/supabase/client');
-        const supabase = createClient();
-        await supabase.from('teams').delete().eq('id', workspace.id);
-      }
-      setShowDeleteWorkspaceModal(false);
-      toast.success('Workspace supprimé avec succès.');
-      router.push('/dashboard');
-    } catch (err) {
-      toast.error('Erreur lors de la suppression du workspace');
-    }
-  };
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-7xl">
+        <div className="h-8 w-48 bg-bg-elevated animate-pulse rounded mb-4" />
+        <div className="h-4 w-96 bg-bg-elevated animate-pulse rounded mb-8" />
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="h-24 bg-bg-elevated animate-pulse rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
-  // Filtrer les formulaires
-  const filteredForms = forms.filter((f) => {
-    if (statusFilter === 'all') return true;
-    return f.status === statusFilter;
-  });
+  if (!workspace) {
+    return null;
+  }
+
+  const isPersonal = workspace.scope === 'personal';
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      {/* Workspace Header Info */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between pb-6 border-b border-border">
-        <div>
-          <div className="flex items-center gap-2 text-text-tertiary text-xs font-semibold uppercase tracking-wider">
-            {workspace.scope === 'personal' ? (
-              <Users className="h-3 w-3" />
+    <div className="mx-auto max-w-7xl space-y-8">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            {isPersonal ? (
+              <User className="h-7 w-7 text-text-secondary" />
             ) : (
-              <Users className="h-3 w-3" />
+              <Users className="h-7 w-7 text-text-secondary" />
             )}
-            <span>Espace {workspace.scope === 'personal' ? 'Personnel' : 'Équipe'}</span>
+            <h1 className="font-display text-4xl text-text-primary">
+              {workspace.name}
+            </h1>
           </div>
-          <h1 className="font-display text-3xl font-bold mt-1 text-text-primary">
-            {workspace.name}
-          </h1>
+          <p className="papyrus-meta text-sm not-italic text-text-secondary">
+            i. {filteredForms.length} formulaire{filteredForms.length > 1 ? 's' : ''}
+            {searchTerm && ` trouvé${filteredForms.length > 1 ? 's' : ''} pour "${searchTerm}"`}
+          </p>
         </div>
 
-        {/* Tab buttons */}
-        <div className="flex gap-1 border-b border-transparent md:border-none">
-          <button
-            onClick={() => setActiveTab('forms')}
-            className={cn(
-              'px-4 py-2 text-xs font-medium rounded-lg transition-all',
-              activeTab === 'forms'
-                ? 'bg-mooove-navy text-mooove-ice'
-                : 'bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
-            )}
-          >
-            Formulaires ({forms.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('members')}
-            className={cn(
-              'px-4 py-2 text-xs font-medium rounded-lg transition-all',
-              activeTab === 'members'
-                ? 'bg-mooove-navy text-mooove-ice'
-                : 'bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
-            )}
-          >
-            Membres ({workspace.members?.length || 0})
-          </button>
-          {isAdminOrOwner && (
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={cn(
-                'px-4 py-2 text-xs font-medium rounded-lg transition-all',
-                activeTab === 'settings'
-                  ? 'bg-mooove-navy text-mooove-ice'
-                  : 'bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
-              )}
+        <div className="flex items-center gap-3">
+          {!isPersonal && (
+            <Button
+              variant="secondary"
+              iconLeft={<Users className="h-4 w-4" />}
+              onClick={() => {
+                setIsManagingMembers(true);
+                loadMembers(workspace.id);
+              }}
             >
-              Paramètres
-            </button>
+              Membres
+            </Button>
           )}
+          <Button
+            variant="cta"
+            iconLeft={<Plus className="h-4 w-4" />}
+            onClick={handleNewForm}
+          >
+            Nouveau formulaire
+          </Button>
         </div>
       </div>
 
-      {/* ==================== TAB: FORMS ==================== */}
-      {activeTab === 'forms' && (
-        <div className="space-y-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            {/* Pill Filters */}
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { key: 'all', label: 'Tous' },
-                { key: 'draft', label: 'Brouillons' },
-                { key: 'published', label: 'Publiés' },
-                { key: 'closed', label: 'Clos' }
-              ].map((filter) => (
-                <button
-                  key={filter.key}
-                  onClick={() => setStatusFilter(filter.key as any)}
-                  className={cn(
-                    'px-3 py-1 text-xs font-medium rounded-full border transition',
-                    statusFilter === filter.key
-                      ? 'border-mooove-navy bg-mooove-navy text-white'
-                      : 'border-border text-text-secondary hover:border-border-strong hover:text-text-primary'
-                  )}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <StatCard
+          label="Total"
+          value={formatCount(stats.total)}
+          icon={<FileText className="h-4 w-4" />}
+          active={statusFilter === 'all'}
+          onClick={() => setStatusFilter('all')}
+        />
+        <StatCard
+          label="Publiés"
+          value={formatCount(stats.published)}
+          icon={<Check className="h-4 w-4" />}
+          color="text-mooove-electric"
+          active={statusFilter === 'published'}
+          onClick={() => setStatusFilter('published')}
+        />
+        <StatCard
+          label="Brouillons"
+          value={formatCount(stats.draft)}
+          icon={<Pencil className="h-4 w-4" />}
+          color="text-text-secondary"
+          active={statusFilter === 'draft'}
+          onClick={() => setStatusFilter('draft')}
+        />
+        <StatCard
+          label="Clos"
+          value={formatCount(stats.closed)}
+          icon={<X className="h-4 w-4" />}
+          color="text-text-tertiary"
+          active={statusFilter === 'closed'}
+          onClick={() => setStatusFilter('closed')}
+        />
+      </div>
 
-            {/* Create button */}
-            <Button
-              onClick={handleCreateForm}
-              variant="primary"
-              size="sm"
-              iconLeft={<Plus className="h-4 w-4" />}
-            >
-              Nouveau formulaire
-            </Button>
-          </div>
+      {/* Filters Bar */}
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
+          <input
+            type="text"
+            placeholder="Rechercher un formulaire..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-bg-surface text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent transition"
+          />
+        </div>
+      </div>
 
-          {filteredForms.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredForms.map((form) => (
-                <FormCard
-                  key={form.id}
-                  form={form}
-                  onEdit={handleEditForm}
-                  onDuplicate={handleDuplicateForm}
-                  onDelete={handleDeleteForm}
+      {/* Forms List */}
+      {filteredForms.length === 0 ? (
+        <EmptyState
+          hasSearch={!!searchTerm}
+          statusFilter={statusFilter}
+          onNewForm={handleNewForm}
+          onClearSearch={() => setSearchTerm('')}
+          onClearFilter={() => setStatusFilter('all')}
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredForms.map((form) => (
+            <FormCard key={form.id} form={form} />
+          ))}
+        </div>
+      )}
+
+      {/* Modal de Gestion des Membres du Workspace */}
+      {isManagingMembers && workspace && (
+        <Modal
+          isOpen={isManagingMembers}
+          onClose={() => setIsManagingMembers(false)}
+          title={`Gérer les membres — ${workspace.name}`}
+        >
+          <div className="space-y-6">
+            {/* Formulaire d'invitation */}
+            <form onSubmit={handleAddMember} className="space-y-3">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary">
+                Inviter un membre
+              </span>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  required
+                  placeholder="collaborateur@mooove.live"
+                  value={newMemberEmail}
+                  onChange={(e) => setNewMemberEmail(e.target.value)}
+                  className="flex-1 h-10 px-3 border border-border bg-bg-surface text-sm rounded-md focus:border-accent focus:outline-none"
                 />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center p-12 border border-dashed border-border rounded-2xl bg-bg-surface text-center">
-              <FileText className="h-10 w-10 text-text-tertiary mb-3 animate-pulse" />
-              <h3 className="font-display text-lg font-bold text-text-primary">
-                Aucun formulaire trouvé
-              </h3>
-              <p className="text-xs text-text-tertiary mt-1 max-w-sm">
-                Commencez par créer votre premier formulaire interactif et récoltez de superbes réponses.
-              </p>
-              <Button
-                onClick={handleCreateForm}
-                variant="primary"
-                size="sm"
-                className="mt-4"
-                iconLeft={<Plus className="h-4 w-4" />}
-              >
-                Créer un formulaire
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ==================== TAB: MEMBERS ==================== */}
-      {activeTab === 'members' && (
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-border bg-bg-surface p-6 shadow-sm">
-            <h3 className="font-display text-lg font-bold border-b border-border pb-3 mb-4 flex items-center gap-2">
-              <Users className="h-5 w-5 text-text-secondary" />
-              Collaborateurs de l'espace
-            </h3>
-
-            {/* Tableau des membres */}
-            <div className="overflow-x-auto border border-border rounded-xl">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-bg-elevated/40 text-[10px] uppercase tracking-wider text-text-secondary border-b border-border">
-                    <th className="px-4 py-3 font-medium">Nom</th>
-                    <th className="px-4 py-3 font-medium">Email</th>
-                    <th className="px-4 py-3 font-medium">Rôle</th>
-                    {isAdminOrOwner && <th className="px-4 py-3 w-16" />}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60 text-xs">
-                  {workspace.members?.map((member) => {
-                    const isSelf = member.user_id === 'local-user';
-                    const isMemberOwner = member.role === 'owner';
-
-                    return (
-                      <tr key={member.user_id} className={cn('hover:bg-bg-elevated/20 transition', isSelf && 'bg-accent-cta/5')}>
-                        <td className="px-4 py-3.5 font-medium text-text-primary flex items-center gap-2">
-                          <span className="truncate">{member.name || 'Invitations en attente'}</span>
-                          {isSelf && (
-                            <span className="bg-mooove-navy text-mooove-ice text-[9px] font-bold px-1.5 py-0.2 rounded">
-                              Vous
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5 text-text-secondary truncate">{member.email}</td>
-                        <td className="px-4 py-3.5">
-                          {isAdminOrOwner && !isMemberOwner && !isSelf ? (
-                            <select
-                              value={member.role}
-                              onChange={(e) => handleUpdateRole(member.user_id, e.target.value as WorkspaceRole)}
-                              className="bg-bg-surface border border-border rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent"
-                            >
-                              <option value="admin">Administrateur</option>
-                              <option value="member">Collaborateur</option>
-                              <option value="viewer">Lecteur</option>
-                            </select>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 font-medium capitalize text-text-secondary">
-                              {isMemberOwner ? (
-                                <Shield className="h-3 w-3 text-accent" />
-                              ) : (
-                                <Eye className="h-3 w-3 text-text-tertiary" />
-                              )}
-                              {member.role === 'owner'
-                                ? 'Propriétaire'
-                                : member.role === 'admin'
-                                ? 'Administrateur'
-                                : member.role === 'member'
-                                ? 'Collaborateur'
-                                : 'Lecteur'}
-                            </span>
-                          )}
-                        </td>
-                        {isAdminOrOwner && (
-                          <td className="px-4 py-3.5 text-right">
-                            {!isMemberOwner && !isSelf && (
-                              <button
-                                onClick={() => setMemberToRemove(member)}
-                                className="p-1 rounded text-text-tertiary hover:text-danger transition hover:bg-danger/5"
-                                aria-label="Retirer le collaborateur"
-                              >
-                                <UserMinus className="h-4 w-4" />
-                              </button>
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Formulaire d'invitation si Admin ou Owner */}
-            {isAdminOrOwner ? (
-              <form onSubmit={handleInviteMember} className="mt-8 pt-6 border-t border-border space-y-4">
-                <h4 className="font-display text-sm font-bold text-text-primary flex items-center gap-1.5">
-                  <UserPlus className="h-4 w-4" />
-                  Inviter un collaborateur
-                </h4>
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <div className="flex-1">
-                    <Input
-                      type="text"
-                      required
-                      value={inviteName}
-                      onChange={(e) => setInviteName(e.target.value)}
-                      placeholder="Nom complet"
-                      className="h-10 text-xs"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Input
-                      type="email"
-                      required
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      placeholder="Adresse email"
-                      className="h-10 text-xs"
-                    />
-                  </div>
-                  <div className="w-full sm:w-40">
-                    <select
-                      value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value as WorkspaceRole)}
-                      className="w-full h-10 px-3 bg-bg-surface border border-border-strong rounded-md text-xs text-text-primary focus:outline-none focus:border-accent"
-                    >
-                      <option value="admin">Administrateur</option>
-                      <option value="member">Collaborateur</option>
-                      <option value="viewer">Lecteur</option>
-                    </select>
-                  </div>
-                  <Button type="submit" variant="cta" size="md" className="shrink-0 text-xs font-semibold">
-                    Inviter
-                  </Button>
-                </div>
-                <p className="text-[10px] text-text-tertiary leading-normal">
-                  * TODO: Supabase — en production, cela enverra une invitation par email via Resend avec un lien de raccordement d'espace.
-                </p>
-              </form>
-            ) : (
-              <div className="mt-6 text-center py-2 text-text-tertiary">
-                Contactez un admin pour modifier les accès de cet espace.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ==================== TAB: SETTINGS ==================== */}
-      {activeTab === 'settings' && isAdminOrOwner && (
-        <div className="space-y-6">
-          {/* Général */}
-          <div className="rounded-2xl border border-border bg-bg-surface p-6 shadow-sm space-y-4">
-            <h3 className="font-display text-lg font-bold border-b border-border pb-3 mb-4 flex items-center gap-2">
-              <Settings2 className="h-5 w-5 text-text-secondary" />
-              Général
-            </h3>
-            
-            <div className="max-w-md">
-              <Input
-                label="Nom du workspace"
-                value={workspaceNameInput}
-                onChange={(e) => setWorkspaceNameInput(e.target.value)}
-                placeholder="Mon espace"
-                maxLength={50}
-              />
-              <p className="text-[10px] text-text-tertiary mt-2">
-                * Enregistrement automatique en direct (debounce 1s).
-              </p>
-            </div>
-          </div>
-
-          {/* Zone Danger */}
-          {workspace.is_deletable && (
-            <div className="rounded-2xl border border-danger/20 bg-danger/5 p-6 shadow-sm space-y-4">
-              <h3 className="font-display text-lg font-bold border-b border-danger/10 pb-3 mb-4 text-danger flex items-center gap-2">
-                <Trash className="h-5 w-5" />
-                Zone de Danger
-              </h3>
-              
-              <div>
-                <h4 className="text-sm font-semibold text-text-primary">Supprimer ce workspace</h4>
-                <p className="text-xs text-text-secondary mt-1">
-                  La suppression de cet espace de travail entraînera la dissociation de tous les formulaires associés. Ils ne seront pas supprimés, mais ne figureront plus dans cet espace.
-                </p>
-              </div>
-
-              <div className="pt-2">
-                <Button
-                  onClick={() => setShowDeleteWorkspaceModal(true)}
-                  variant="danger"
-                  size="sm"
-                  className="font-semibold text-xs"
-                >
-                  Supprimer ce workspace
+                <Button type="submit" variant="cta" loading={memberLoading} size="sm">
+                  Inviter
                 </Button>
               </div>
+            </form>
+
+            {/* Liste des membres */}
+            <div className="space-y-3">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary">
+                Membres de l&apos;espace ({workspaceMembers.length})
+              </span>
+              <div className="border border-border rounded-lg bg-bg-surface/50 divide-y divide-border overflow-hidden max-h-[220px] overflow-y-auto">
+                {workspaceMembers.length === 0 ? (
+                  <span className="block p-4 text-sm text-text-tertiary text-center">
+                    Chargement des membres...
+                  </span>
+                ) : (
+                  workspaceMembers.map((member) => (
+                    <div key={member.user_id} className="flex items-center justify-between p-3.5">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-medium text-text-primary truncate">
+                          {member.email}
+                        </span>
+                        <span className="text-[10px] text-text-tertiary uppercase font-semibold">
+                          {member.role}
+                        </span>
+                      </div>
+                      
+                      {/* Bouton de retrait (pas pour le créateur ou si local-user) */}
+                      {member.user_id !== currentUser?.id && member.user_id !== 'local-user' && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(member.user_id)}
+                          className="text-xs text-danger hover:underline font-semibold"
+                        >
+                          Retirer
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          )}
+
+            <div className="flex justify-end pt-2 border-t border-border/60">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsManagingMembers(false)}
+              >
+                Fermer
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// Composants helpers
+function StatCard({
+  label,
+  value,
+  icon,
+  color = "text-text-secondary",
+  active = false,
+  onClick
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  color?: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg border p-5 transition text-left w-full ${
+        active
+          ? 'border-accent bg-accent/5'
+          : 'border-border bg-bg-surface hover:border-border-strong hover:shadow-sm'
+      }`}
+    >
+      <div className={`flex items-center gap-2 ${color}`}>
+        {icon}
+        <span className="text-xs uppercase tracking-wide">{label}</span>
+      </div>
+      <div className="mt-3 font-display text-3xl text-text-primary">{value}</div>
+    </button>
+  );
+}
+
+function FormCard({ form }: { form: Form }) {
+  return (
+    <Link
+      href={`/forms/${form.id}`}
+      className="group block rounded-lg border border-border bg-bg-surface p-5 transition hover:border-border-strong hover:shadow-sm"
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className="font-display text-lg text-text-primary leading-tight group-hover:text-accent transition">
+          {form.title}
         </div>
+        <StatusBadge status={form.status} />
+      </div>
+
+      {form.description && (
+        <p className="text-sm text-text-secondary mb-3 line-clamp-2">
+          {form.description}
+        </p>
       )}
 
-      {/* Modal Deletion Confirm Member */}
-      {memberToRemove && (
-        <Modal
-          isOpen={!!memberToRemove}
-          onClose={() => setMemberToRemove(null)}
-          title="Retirer un collaborateur"
-        >
-          <div className="space-y-4">
-            <p>
-              Êtes-vous sûr de vouloir retirer{' '}
-              <strong className="text-text-primary">{memberToRemove.name || memberToRemove.email}</strong>{' '}
-              de cet espace de travail ?
-            </p>
-            <p className="text-xs text-text-tertiary">
-              Cette personne n'aura plus accès aux formulaires ni à la configuration de ce workspace.
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setMemberToRemove(null)}
-              >
-                Annuler
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleRemoveMemberConfirm}
-              >
-                Retirer le collaborateur
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <div className="papyrus-meta text-xs text-text-tertiary space-y-1">
+        <div>
+          Mis à jour {new Date(form.updated_at).toLocaleDateString('fr-FR')}
+        </div>
+        <div>
+          {form.fields?.length ?? 0} champ{(form.fields?.length ?? 0) > 1 ? 's' : ''}
+          {form.status === 'published' && ' · Ouvert aux réponses'}
+        </div>
+      </div>
+    </Link>
+  );
+}
 
-      {/* Modal Deletion Confirm Workspace */}
-      {showDeleteWorkspaceModal && (
-        <Modal
-          isOpen={showDeleteWorkspaceModal}
-          onClose={() => setShowDeleteWorkspaceModal(false)}
-          title="Supprimer définitivement le workspace"
-        >
-          <div className="space-y-4">
-            <p>
-              Êtes-vous sûr de vouloir supprimer définitivement le workspace{' '}
-              <strong className="text-text-primary">« {workspace.name} »</strong> ?
-            </p>
-            <p className="text-xs text-text-tertiary font-medium">
-              Cette action est irréversible. Tous les formulaires de ce workspace seront dissociés (replacés hors workspace).
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowDeleteWorkspaceModal(false)}
-              >
-                Annuler
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleDeleteWorkspace}
-              >
-                Supprimer définitivement (danger)
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+function StatusBadge({ status }: { status: string }) {
+  if (status === 'published') return <Badge variant="published">Publié</Badge>;
+  if (status === 'closed') return <Badge variant="closed">Clos</Badge>;
+  return <Badge variant="draft">Brouillon</Badge>;
+}
+
+function EmptyState({
+  hasSearch,
+  statusFilter,
+  onNewForm,
+  onClearSearch,
+  onClearFilter
+}: {
+  hasSearch: boolean;
+  statusFilter: FilterStatus;
+  onNewForm: () => void;
+  onClearSearch: () => void;
+  onClearFilter: () => void;
+}) {
+  if (hasSearch) {
+    return (
+      <div className="rounded-lg border border-dashed border-border-strong bg-bg-surface p-12 text-center">
+        <Search className="mx-auto h-10 w-10 text-text-tertiary" />
+        <h3 className="mt-4 font-display text-xl text-text-primary">Aucun résultat</h3>
+        <p className="papyrus-meta mt-1 text-sm">i. Aucun formulaire ne correspond à votre recherche</p>
+        <Button variant="secondary" className="mt-5" onClick={onClearSearch}>
+          Effacer la recherche
+        </Button>
+      </div>
+    );
+  }
+
+  if (statusFilter !== 'all') {
+    const filterLabels = {
+      published: 'publié',
+      draft: 'brouillon',
+      closed: 'clos'
+    };
+
+    return (
+      <div className="rounded-lg border border-dashed border-border-strong bg-bg-surface p-12 text-center">
+        <Filter className="mx-auto h-10 w-10 text-text-tertiary" />
+        <h3 className="mt-4 font-display text-xl text-text-primary">Aucun formulaire {filterLabels[statusFilter]}</h3>
+        <p className="papyrus-meta mt-1 text-sm">i. Aucun formulaire avec ce statut dans cet espace</p>
+        <Button variant="secondary" className="mt-5" onClick={onClearFilter}>
+          Voir tous les formulaires
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-border-strong bg-bg-surface p-12 text-center">
+      <FileText className="mx-auto h-10 w-10 text-text-tertiary" />
+      <h3 className="mt-4 font-display text-xl text-text-primary">Aucun formulaire</h3>
+      <p className="papyrus-meta mt-1 text-sm">i. Cet espace de travail ne contient aucun formulaire</p>
+      <Button variant="cta" className="mt-5" iconLeft={<Plus className="h-4 w-4" />} onClick={onNewForm}>
+        Créer le premier formulaire
+      </Button>
     </div>
   );
 }
