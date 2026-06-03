@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { Sidebar } from '@/components/layout/Sidebar';
-import { Header } from '@/components/layout/Header';
+import { DashboardWrapper } from './DashboardWrapper';
 import { IS_LOCAL_MODE } from '@/lib/mode';
 import { cookies } from 'next/headers';
 
@@ -95,17 +94,13 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar 
-        teamName={teamName} 
-        userEmail={userEmail} 
-        activeTeam={activeTeam} 
-        allTeams={allTeams} 
-      />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header />
-        <main className="relative flex-1 overflow-y-auto px-8 py-6">{children}</main>
-      </div>
-    </div>
+    <DashboardWrapper
+      teamName={teamName}
+      userEmail={userEmail}
+      activeTeam={activeTeam}
+      allTeams={allTeams}
+    >
+      {children}
+    </DashboardWrapper>
   );
 }

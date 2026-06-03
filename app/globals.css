@@ -47,6 +47,15 @@
   --font-display: var(--font-aktiv), 'Aktiv Grotesk', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif; /* identité Papyrus, en option */
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* Sidebar — tailles fluides proportionnelles à l'écran */
+  --sidebar-width: clamp(200px, 15vw, 280px);
+  --sidebar-icon: clamp(14px, 1.1vw, 18px);
+  --sidebar-text-sm: clamp(11px, 0.85vw, 13px);
+  --sidebar-text-base: clamp(12px, 0.9vw, 14px);
+  --sidebar-item-height: clamp(28px, 2.2vw, 36px);
+  --sidebar-logo-size: clamp(28px, 2.2vw, 36px);
+  --sidebar-avatar-size: clamp(26px, 2vw, 32px);
 }
 
 [data-theme='dark'] {

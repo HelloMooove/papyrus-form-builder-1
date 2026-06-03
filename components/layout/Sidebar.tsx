@@ -17,7 +17,9 @@ import {
   MoreHorizontal,
   LogOut,
   X,
-  Check
+  Check,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
@@ -41,9 +43,18 @@ interface Props {
   userEmail?: string;
   activeTeam?: { id: string; name: string; plan: string };
   allTeams?: { id: string; name: string; plan: string }[];
+  isCollapsed?: boolean;
+  onToggle?: () => void;
 }
 
-export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
+export function Sidebar({
+  teamName,
+  userEmail,
+  activeTeam,
+  allTeams,
+  isCollapsed = false,
+  onToggle
+}: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -645,33 +656,60 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
   };
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-border bg-bg-surface select-none">
+    <aside
+      style={{ width: isCollapsed ? '56px' : 'var(--sidebar-width)' }}
+      className={cn(
+        "flex h-full flex-col border-r border-border bg-bg-surface select-none transition-all duration-200 overflow-hidden"
+      )}
+    >
       {/* Logo Papyrus */}
-      <div className="px-4 py-3">
+      <div
+        className={cn(
+          "py-3 flex items-center transition-all duration-200",
+          isCollapsed
+            ? "px-2 flex-col gap-2 justify-center"
+            : "px-4 justify-between"
+        )}
+      >
         <button
           onClick={() => router.push('/dashboard')}
-          className="flex items-center gap-2 text-left focus:outline-none w-full"
+          className="flex items-center gap-2 text-left focus:outline-none"
         >
           {/* Carré P arrondi */}
-          <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-mooove-navy text-white font-bold text-sm">
+          <div
+            style={{ width: 'var(--sidebar-logo-size)', height: 'var(--sidebar-logo-size)' }}
+            className="flex items-center justify-center rounded-xl bg-mooove-navy text-white font-bold text-sm xl:text-base shrink-0"
+          >
             P
           </div>
           {/* Textes */}
           <div className="flex flex-col">
-            <div className="font-display text-base font-semibold text-text-primary leading-tight">
+            <span className={cn("font-display text-base xl:text-lg font-semibold text-text-primary leading-tight truncate transition-all duration-200", isCollapsed && "hidden")}>
               Papyrus
-            </div>
-            <div className="font-body text-xs text-text-tertiary leading-tight">
+            </span>
+            <span className={cn("font-body text-xs xl:text-sm text-text-tertiary leading-tight truncate transition-all duration-200", isCollapsed && "hidden")}>
               by Mooove
-            </div>
+            </span>
           </div>
+        </button>
+
+        <button
+          onClick={onToggle}
+          className="p-1 rounded-md text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition shrink-0"
+          aria-label={isCollapsed ? "Étendre la sidebar" : "Réduire la sidebar"}
+        >
+          {isCollapsed ? (
+            <PanelLeftOpen className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
         </button>
       </div>
 
       {/* Workspace Section */}
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
         <div>
-          <span className="block px-3 text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary mb-1">
+          <span className={cn("block px-3 text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary mb-1 truncate transition-all duration-200", isCollapsed && "hidden")}>
             Espaces de travail
           </span>
 
@@ -694,23 +732,31 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
                       if (renamingId === ws.id) return;
                       router.push(`/forms?workspace=${ws.id}`);
                     }}
+                    style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-base)' }}
                     className={cn(
-                      'flex items-center justify-between w-full px-3 h-8 text-sm font-medium cursor-pointer rounded-md transition hover:bg-bg-elevated text-text-secondary hover:text-text-primary',
-                      pathname === '/forms' && activeWorkspaceId === ws.id && 'bg-bg-elevated text-text-primary font-semibold'
+                      'flex items-center w-full px-3 font-medium cursor-pointer rounded-md transition hover:bg-bg-elevated text-text-secondary hover:text-text-primary',
+                      pathname === '/forms' && activeWorkspaceId === ws.id && 'bg-bg-elevated text-text-primary font-semibold',
+                      isCollapsed ? 'justify-center' : 'justify-between gap-2'
                     )}
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {isPersonal ? (
-                        <User className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+                        <User
+                          style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
+                          className="shrink-0 text-text-tertiary"
+                        />
                       ) : (
-                        <Users className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+                        <Users
+                          style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
+                          className="shrink-0 text-text-tertiary"
+                        />
                       )}
 
                       {renamingId === ws.id ? (
                         <form
                           onSubmit={handleRenameWorkspace}
                           onClick={(e) => e.stopPropagation()}
-                          className="flex-1 min-w-0"
+                          className={cn("flex-1 min-w-0", isCollapsed && "hidden")}
                         >
                           <input
                             type="text"
@@ -722,53 +768,60 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
                           />
                         </form>
                       ) : (
-                        <span className="truncate text-sm font-medium text-text-primary">{ws.name}</span>
+                        <span
+                          style={{ fontSize: 'var(--sidebar-text-base)' }}
+                          className={cn("truncate font-medium text-text-primary transition-all duration-200", isCollapsed && "hidden")}
+                        >
+                          {ws.name}
+                        </span>
                       )}
                     </div>
 
                     {/* Options / Accordion chevrons */}
-                    <div className="flex items-center gap-1">
-                      {/* Bouton options 3 points */}
-                      {renamingId !== ws.id && !isPersonal && (
-                        <div className="relative">
-                          <button
-                            ref={(el) => {
-                              workspaceMenuButtonRefs.current[ws.id] = el;
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              const buttonElement = e.currentTarget;
-                              if (activeMenuId === ws.id) {
-                                handleCloseWorkspaceMenu();
-                              } else {
-                                handleOpenWorkspaceMenu(ws.id, buttonElement);
-                              }
-                            }}
-                            className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-border text-text-tertiary hover:text-text-primary transition"
-                            aria-label="Options de l'espace"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Accordion trigger */}
-                      <button
-                        onClick={(e) => toggleAccordion(ws.id, e)}
-                        className="p-0.5 rounded text-text-tertiary hover:text-text-primary transition"
-                      >
-                        {isOpen ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
+                    {!isCollapsed && (
+                      <div className="flex items-center gap-1">
+                        {/* Bouton options 3 points */}
+                        {renamingId !== ws.id && !isPersonal && (
+                          <div className="relative">
+                            <button
+                              ref={(el) => {
+                                workspaceMenuButtonRefs.current[ws.id] = el;
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const buttonElement = e.currentTarget;
+                                if (activeMenuId === ws.id) {
+                                  handleCloseWorkspaceMenu();
+                                } else {
+                                  handleOpenWorkspaceMenu(ws.id, buttonElement);
+                                }
+                              }}
+                              className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-border text-text-tertiary hover:text-text-primary transition"
+                              aria-label="Options de l'espace"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                          </div>
                         )}
-                      </button>
-                    </div>
+
+                        {/* Accordion trigger */}
+                        <button
+                          onClick={(e) => toggleAccordion(ws.id, e)}
+                          className="p-0.5 rounded text-text-tertiary hover:text-text-primary transition"
+                        >
+                          {isOpen ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Accordion Dropdown Content */}
-                  {isOpen && (
+                  {isOpen && !isCollapsed && (
                     <div className="pl-3 pr-1 py-0.5 space-y-0 border-l border-border/60 ml-4 mt-0.5 mb-1 animate-in slide-in-from-top-1 duration-150 max-h-[280px] overflow-y-auto">
                       {hasForms ? (
                         <>
@@ -777,13 +830,19 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
                               <div className="flex items-center justify-between w-full">
                                 <Link
                                   href={`/forms/${form.id}/edit`}
+                                  style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-sm)' }}
                                   className={cn(
-                                    'flex items-center gap-2 h-7 px-3 text-xs text-text-secondary hover:text-text-primary rounded hover:bg-bg-elevated transition truncate flex-1',
+                                    'flex items-center gap-2 px-3 text-text-secondary hover:text-text-primary rounded hover:bg-bg-elevated transition truncate flex-1',
                                     pathname === `/forms/${form.id}/edit` && 'text-text-primary font-medium'
                                   )}
                                 >
-                                  <FileText className="h-3 w-3 shrink-0 text-text-tertiary" />
-                                  <span className="truncate">{form.title || 'Formulaire sans titre'}</span>
+                                  <FileText
+                                    style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
+                                    className="shrink-0 text-text-tertiary"
+                                  />
+                                  <span className={cn("truncate transition-all duration-200", isCollapsed && "hidden")}>
+                                    {form.title || 'Formulaire sans titre'}
+                                  </span>
                                 </Link>
 
                                 {/* Bouton menu contextuel */}
@@ -827,10 +886,16 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
                       {/* Bouton + Nouveau formulaire */}
                       <button
                         onClick={() => handleCreateFormInWorkspace(ws.id)}
-                        className="flex items-center gap-2 h-7 px-3 text-xs text-mooove-cyan hover:bg-papyrus-border/20 rounded-md transition w-full text-left font-medium"
+                        style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-sm)' }}
+                        className="flex items-center gap-2 px-3 text-mooove-cyan hover:bg-papyrus-border/20 rounded-md transition w-full text-left font-medium"
                       >
-                        <Plus className="h-3 w-3 shrink-0" />
-                        Nouveau formulaire
+                        <Plus
+                          style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
+                          className="shrink-0"
+                        />
+                        <span className={cn("truncate transition-all duration-200", isCollapsed && "hidden")}>
+                          Nouveau formulaire
+                        </span>
                       </button>
                     </div>
                   )}
@@ -860,10 +925,18 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
           ) : (
             <button
               onClick={() => setIsCreating(true)}
-              className="flex items-center gap-2 px-3 py-2 w-full text-left text-sm text-text-tertiary hover:text-text-primary transition font-medium"
+              style={{ fontSize: 'var(--sidebar-text-sm)' }}
+              className={cn(
+                "flex items-center w-full text-text-tertiary hover:text-text-primary transition font-medium px-3 py-2",
+                isCollapsed ? "justify-center" : "text-left gap-2"
+              )}
             >
-              <Plus className="h-3.5 w-3.5" />
-              Nouveau workspace
+              <Plus
+                style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
+              />
+              <span className={cn("truncate transition-all duration-200", isCollapsed && "hidden")}>
+                Nouveau workspace
+              </span>
             </button>
           )}
         </div>
@@ -877,18 +950,25 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
             <Link
               key={href}
               href={href}
+              style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-base)' }}
               className={cn(
-                'mb-0.5 flex items-center justify-between rounded-md px-3 h-8 text-sm font-medium transition',
+                'mb-0.5 flex items-center rounded-md px-3 font-medium transition',
                 active
                   ? 'bg-bg-elevated text-text-primary'
-                  : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
+                  : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary',
+                isCollapsed ? 'justify-center' : 'justify-between gap-2'
               )}
             >
               <div className="flex items-center gap-2">
-                <Icon className="h-3.5 w-3.5 text-text-tertiary" />
-                <span>{label}</span>
+                <Icon
+                  style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
+                  className="text-text-tertiary"
+                />
+                <span className={cn("truncate transition-all duration-200", isCollapsed && "hidden")}>
+                  {label}
+                </span>
               </div>
-              {badge && (
+              {badge && !isCollapsed && (
                 <span className="bg-bg-elevated border border-border text-text-secondary text-[9px] font-semibold px-2 py-0.5 rounded-full select-none">
                   {badge}
                 </span>
@@ -900,21 +980,32 @@ export function Sidebar({ teamName, userEmail, activeTeam, allTeams }: Props) {
 
       {/* Circle User Profile bottom */}
       <div className="border-t border-border px-3 py-2 bg-bg-elevated/20">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className={cn("flex items-center", isCollapsed ? "justify-center" : "justify-between")}>
+          <div className={cn("flex items-center min-w-0", isCollapsed ? "justify-center" : "gap-2")}>
             {/* Initial circle */}
-            <div className="flex h-7 w-7 min-w-[28px] items-center justify-center rounded-full bg-mooove-navy text-mooove-ice font-bold font-display text-xs">
+            <div
+              style={{
+                width: 'var(--sidebar-avatar-size)',
+                height: 'var(--sidebar-avatar-size)',
+                minWidth: 'var(--sidebar-avatar-size)',
+                fontSize: 'var(--sidebar-text-base)'
+              }}
+              className="flex items-center justify-center rounded-full bg-mooove-navy text-mooove-ice font-bold font-display"
+            >
               {(isLocal ? 'LO' : (userEmail || currentUser?.email || 'U')).charAt(0).toUpperCase()}
             </div>
             {/* Info text */}
             <div className="flex flex-col leading-tight truncate">
-              <span className="font-display text-xs font-medium text-text-primary truncate">
+              <span
+                style={{ fontSize: 'var(--sidebar-text-sm)' }}
+                className={cn("font-display font-medium text-text-primary truncate transition-all duration-200", isCollapsed && "hidden")}
+              >
                 {isLocal ? 'local@papyrus.dev' : (userEmail || currentUser?.email || 'Utilisateur')}
               </span>
             </div>
           </div>
           
-          {!isLocal && (
+          {!isLocal && !isCollapsed && (
             <button
               onClick={handleLogout}
               className="p-1.5 rounded-md hover:bg-bg-elevated text-text-tertiary hover:text-danger transition shrink-0"
