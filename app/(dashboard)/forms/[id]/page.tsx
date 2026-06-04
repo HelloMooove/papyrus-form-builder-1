@@ -35,6 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { Form, Field } from '@/types';
 import { createClient } from '@/lib/supabase/client';
+import { toast } from '@/components/ui/Toast';
 
 type Tab = 'overview' | 'responses' | 'share';
 
@@ -86,7 +87,7 @@ export default function FormDashboardPage() {
         router.push('/forms');
       } catch (error) {
         console.error('Failed to delete form:', error);
-        // TODO: Afficher une notification d'erreur à l'utilisateur
+        toast.error('Impossible de supprimer le formulaire. Veuillez réessayer.');
       }
     }
   }

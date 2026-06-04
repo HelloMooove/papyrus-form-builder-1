@@ -27,6 +27,38 @@ function notifyFormCreated() {
   }
 }
 
+function notifyFormUpdated(formId: string, updatedForm: Form) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('papyrus:form-updated', {
+      detail: { formId, form: updatedForm }
+    }));
+  }
+}
+
+function notifyFormDeleted(formId: string) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('papyrus:form-deleted', {
+      detail: { formId }
+    }));
+  }
+}
+
+function notifyFieldUpdated(formId: string, fieldId: string, field: Field) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('papyrus:field-updated', {
+      detail: { formId, fieldId, field }
+    }));
+  }
+}
+
+function notifyFieldsReordered(formId: string, fields: Field[]) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('papyrus:fields-reordered', {
+      detail: { formId, fields }
+    }));
+  }
+}
+
 async function getCurrentUser() {
   const supabase = createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -62,9 +94,14 @@ export async function listForms(): Promise<Form[]> {
     teamIds.push(user.id);
   }
 
+  // Une seule requête avec nested selects pour éviter N+1
   const { data: forms, error } = await supabase
     .from('forms')
-    .select('*')
+    .select(`
+      *,
+      fields(*),
+      logic_rules(*)
+    `)
     .in('team_id', teamIds)
     .order('updated_at', { ascending: false });
 
@@ -73,39 +110,27 @@ export async function listForms(): Promise<Form[]> {
     throw error;
   }
 
-  // Pour chaque formulaire, récupérer les champs et règles (sans nested selects)
-  const formsWithRelations = await Promise.all(
-    (forms || []).map(async (form) => {
-      const { data: fields = [] } = await supabase
-        .from('fields')
-        .select('*')
-        .eq('form_id', form.id)
-        .order('field_order', { ascending: true });
+  // Normaliser la structure et trier les relations
+  const normalizedForms = (forms || []).map(form => ({
+    ...form,
+    fields: (form.fields || []).sort((a: any, b: any) => a.field_order - b.field_order),
+    logic_rules: (form.logic_rules || []).sort((a: any, b: any) => a.rule_order - b.rule_order)
+  }));
 
-      const { data: logicRules = [] } = await supabase
-        .from('logic_rules')
-        .select('*')
-        .eq('form_id', form.id)
-        .order('rule_order', { ascending: true });
-
-      return {
-        ...form,
-        fields,
-        logic_rules: logicRules
-      };
-    })
-  );
-
-  return formsWithRelations;
+  return normalizedForms;
 }
 
 export async function getForm(id: string): Promise<Form | null> {
   const supabase = createClient();
 
-  // Récupérer le formulaire
+  // Une seule requête avec nested selects pour éviter N+1
   const { data: form, error } = await supabase
     .from('forms')
-    .select('*')
+    .select(`
+      *,
+      fields(*),
+      logic_rules(*)
+    `)
     .eq('id', id)
     .maybeSingle();
 
@@ -116,32 +141,11 @@ export async function getForm(id: string): Promise<Form | null> {
 
   if (!form) return null;
 
-  // Récupérer les champs
-  const { data: fields, error: fieldsError } = await supabase
-    .from('fields')
-    .select('*')
-    .eq('form_id', id)
-    .order('field_order', { ascending: true });
-
-  if (fieldsError) {
-    console.error('Error fetching fields:', fieldsError);
-  }
-
-  // Récupérer les règles logiques
-  const { data: logicRules, error: logicError } = await supabase
-    .from('logic_rules')
-    .select('*')
-    .eq('form_id', id)
-    .order('rule_order', { ascending: true });
-
-  if (logicError) {
-    console.error('Error fetching logic rules:', logicError);
-  }
-
+  // Normaliser la structure et trier les relations
   return {
     ...form,
-    fields: fields || [],
-    logic_rules: logicRules || []
+    fields: (form.fields || []).sort((a: any, b: any) => a.field_order - b.field_order),
+    logic_rules: (form.logic_rules || []).sort((a: any, b: any) => a.rule_order - b.rule_order)
   };
 }
 
@@ -199,6 +203,116 @@ export async function createForm(title = 'Nouveau formulaire', customTeamId?: st
   };
 }
 
+/**
+ * Helper pour synchroniser les entités liées (fields, logic_rules) avec rollback automatique
+ */
+async function syncRelatedEntities<T extends { id: string }>(
+  supabase: ReturnType<typeof createClient>,
+  tableName: string,
+  formId: string,
+  entities: T[] | undefined,
+  entityName: string
+): Promise<T[]> {
+  if (entities === undefined) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .eq('form_id', formId);
+
+    if (error) throw error;
+
+    const result = data || [];
+    if (tableName === 'logic_rules') {
+      result.sort((a: any, b: any) => a.rule_order - b.rule_order);
+    } else if (tableName === 'fields') {
+      result.sort((a: any, b: any) => a.field_order - b.field_order);
+    }
+    return result as T[];
+  }
+
+  if (entities.length === 0) {
+    // Cas simple : supprimer toutes les entités
+    const { error: deleteError } = await supabase
+      .from(tableName)
+      .delete()
+      .eq('form_id', formId);
+
+    if (deleteError) throw deleteError;
+    return [];
+  }
+
+  // Filtrer les IDs undefined pour éviter les bugs SQL NOT IN
+  const validIds = entities
+    .map((e) => e.id)
+    .filter((id) => id !== undefined && id !== null);
+
+  if (validIds.length === 0) {
+    throw new Error(`Tous les ${entityName} doivent avoir un ID valide`);
+  }
+
+  if (validIds.length !== entities.length) {
+    throw new Error(`Certains ${entityName} ont des IDs undefined ou null`);
+  }
+
+  // Étape 1 : Récupérer les entités existantes pour le rollback potentiel
+  const { data: existingEntities, error: fetchError } = await supabase
+    .from(tableName)
+    .select('*')
+    .eq('form_id', formId);
+
+  if (fetchError) throw fetchError;
+
+  const entitiesToDelete = (existingEntities || []).filter(
+    (existing: any) => !validIds.includes(existing.id)
+  );
+
+  // Étape 2 : Supprimer les entités qui ne sont plus dans la liste
+  if (entitiesToDelete.length > 0) {
+    const { error: deleteError } = await supabase
+      .from(tableName)
+      .delete()
+      .eq('form_id', formId)
+      .not('id', 'in', validIds);
+
+    if (deleteError) throw deleteError;
+  }
+
+  // Étape 3 : Upsert des nouvelles entités et des entités mises à jour
+  try {
+    const sanitizedEntities = entities.map((entity: any) => {
+      const copy = { ...entity, form_id: formId };
+      if (tableName === 'logic_rules') {
+        // Remplacer les chaînes vides ou undefined par null pour éviter les erreurs de type UUID SQL
+        if (!copy.target_field_id || copy.target_field_id === '') {
+          copy.target_field_id = null;
+        }
+      }
+      return copy;
+    });
+
+    const { error: upsertError } = await supabase
+      .from(tableName)
+      .upsert(sanitizedEntities);
+
+    if (upsertError) throw upsertError;
+
+    return entities;
+  } catch (upsertError) {
+    // Rollback : restaurer les entités supprimées en cas d'échec de l'upsert
+    if (entitiesToDelete.length > 0) {
+      try {
+        await supabase
+          .from(tableName)
+          .insert(entitiesToDelete);
+      } catch (rollbackError) {
+        console.error(`Erreur lors du rollback des ${entityName}:`, rollbackError);
+        // L'erreur de rollback ne doit pas masquer l'erreur originale
+      }
+    }
+    throw upsertError;
+  }
+}
+
 export async function updateForm(id: string, patch: Partial<Form>): Promise<Form | null> {
   const supabase = createClient();
 
@@ -221,45 +335,32 @@ export async function updateForm(id: string, patch: Partial<Form>): Promise<Form
     throw formError;
   }
 
-  // Mettre à jour les champs si fournis
-  if (fields) {
-    // Supprimer les anciens champs
-    await supabase.from('fields').delete().eq('form_id', id);
+  // Synchroniser les champs avec gestion d'erreur et rollback
+  const finalFields = await syncRelatedEntities(
+    supabase,
+    'fields',
+    id,
+    fields,
+    'champs'
+  );
 
-    // Insérer les nouveaux champs
-    if (fields.length > 0) {
-      const { error: fieldsError } = await supabase
-        .from('fields')
-        .insert(fields.map(field => ({
-          ...field,
-          form_id: id
-        })));
+  // Synchroniser les logic_rules avec gestion d'erreur et rollback
+  const finalLogicRules = await syncRelatedEntities(
+    supabase,
+    'logic_rules',
+    id,
+    logic_rules,
+    'règles logiques'
+  );
 
-      if (fieldsError) throw fieldsError;
-    }
-  }
+  // Construire le résultat localement au lieu de recharger depuis la DB
+  const updatedForm: Form = {
+    ...form,
+    fields: finalFields,
+    logic_rules: finalLogicRules
+  };
 
-  // Mettre à jour les logic_rules si fournies
-  if (logic_rules) {
-    // Supprimer les anciennes règles
-    await supabase.from('logic_rules').delete().eq('form_id', id);
-
-    // Insérer les nouvelles règles
-    if (logic_rules.length > 0) {
-      const { error: rulesError } = await supabase
-        .from('logic_rules')
-        .insert(logic_rules.map(rule => ({
-          ...rule,
-          form_id: id
-        })));
-
-      if (rulesError) throw rulesError;
-    }
-  }
-
-  // Retourner le formulaire complet mis à jour
-  const updatedForm = await getForm(id);
-  notifyFormsChanged();
+  notifyFormUpdated(id, updatedForm);
   return updatedForm;
 }
 
@@ -273,7 +374,7 @@ export async function deleteForm(id: string): Promise<void> {
 
   if (error) throw error;
 
-  notifyFormsChanged();
+  notifyFormDeleted(id);
 }
 
 /** Ajoute un champ à un formulaire et renvoie le formulaire à jour. */
@@ -341,7 +442,7 @@ export async function addField(
 
   // Retourner le formulaire à jour
   const updated = await getForm(formId);
-  notifyFormsChanged();
+  if (updated) notifyFormUpdated(formId, updated);
   return updated;
 }
 
@@ -365,7 +466,7 @@ export async function updateField(formId: string, fieldId: string, patch: Partia
 
   // Retourner le formulaire à jour
   const updated = await getForm(formId);
-  notifyFormsChanged();
+  if (updated) notifyFormUpdated(formId, updated);
   return updated;
 }
 
@@ -398,7 +499,7 @@ export async function deleteField(formId: string, fieldId: string): Promise<Form
     .eq('id', formId);
 
   const updated = await getForm(formId);
-  notifyFormsChanged();
+  if (updated) notifyFormUpdated(formId, updated);
   return updated;
 }
 
@@ -431,7 +532,7 @@ export async function reorderFields(formId: string, orderedIds: string[]): Promi
 
   // Retourner le formulaire à jour
   const updated = await getForm(formId);
-  notifyFormsChanged();
+  if (updated) notifyFormUpdated(formId, updated);
   return updated;
 }
 
@@ -481,7 +582,7 @@ export async function duplicateField(
     .eq('id', formId);
 
   const updated = await getForm(formId);
-  notifyFormsChanged();
+  if (updated) notifyFormUpdated(formId, updated);
   return updated ? { form: updated, newFieldId: newId } : null;
 }
 
@@ -580,6 +681,7 @@ export async function cloneForm(formId: string, customTeamId?: string): Promise<
 
   const clonedForm = await getForm(cloned.id);
   notifyFormsChanged();
+  notifyFormCreated();
   return clonedForm;
 }
 

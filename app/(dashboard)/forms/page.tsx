@@ -204,7 +204,7 @@ export default function FormsListPage() {
         await deleteForm(id);
       } catch (error) {
         console.error('Failed to delete form:', error);
-        // TODO: Afficher une notification d'erreur à l'utilisateur
+        toast.error('Impossible de supprimer le formulaire. Veuillez réessayer.');
       }
     }
   }
@@ -376,7 +376,7 @@ function FormsTable({
           {forms.map((f, i) => (
             <tr key={f.id} className={i < forms.length - 1 ? 'border-b border-dashed border-border' : ''}>
               <td className="px-4 py-3">
-                <Link href={`/forms/${f.id}/edit`} className="font-display text-base hover:underline">
+                <Link href={`/forms/${f.id}`} className="font-display text-base hover:underline">
                   {f.title}
                 </Link>
                 <div className="text-xs text-text-tertiary">/{f.slug}</div>

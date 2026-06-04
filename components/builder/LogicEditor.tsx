@@ -2,13 +2,13 @@
 
 import { Plus, Trash2, Award } from 'lucide-react';
 import type { Field, Form, LogicCondition, LogicAction, LogicRule, DisplayMode } from '@/types';
-import { addLogicRule, deleteLogicRule, updateLogicRule } from '@/lib/store';
 import { FIELD_META } from '@/lib/field-meta';
 import { getFieldsInSameSection, getSections } from '@/lib/sections';
 
 interface Props {
   form: Form;
   field: Field;
+  onFormChange: (patch: Partial<Form>) => void;
 }
 
 const CONDITIONS: { value: LogicCondition; label: string; types: string[] }[] = [
@@ -73,7 +73,7 @@ function getFieldScoreInfo(field: Field): { minPoints: number; maxPoints: number
   }
 }
 
-export function LogicEditor({ form, field }: Props) {
+export function LogicEditor({ form, field, onFormChange }: Props) {
   const mode: DisplayMode = form.display_mode ?? 'scroll';
   const allFields = form.fields ?? [];
   const rules = (form.logic_rules ?? []).filter((r) => r.source_field_id === field.id);
@@ -119,14 +119,20 @@ export function LogicEditor({ form, field }: Props) {
   function handleAdd() {
     const defaultAction = availableActions[0]?.value ?? 'end_form';
     const initialTargets = getTargetsForAction(defaultAction);
-    addLogicRule(form.id, {
+    
+    const newRule: LogicRule = {
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      form_id: form.id,
       source_field_id: field.id,
       condition: 'equals',
       condition_value: (field.options || [])[0]?.id ?? '',
       action_type: defaultAction,
       target_field_id: initialTargets[0]?.id,
       rule_order: rules.length
-    });
+    };
+
+    const updatedRules = [...(form.logic_rules ?? []), newRule];
+    onFormChange({ logic_rules: updatedRules });
   }
 
   // Texte d'aide selon le mode
@@ -182,8 +188,16 @@ export function LogicEditor({ form, field }: Props) {
             availableActions={availableActions}
             getTargetsForAction={getTargetsForAction}
             isChoice={isChoice}
-            onChange={(patch) => updateLogicRule(form.id, rule.id, patch)}
-            onDelete={() => deleteLogicRule(form.id, rule.id)}
+            onChange={(patch) => {
+              const updatedRules = (form.logic_rules ?? []).map((r) =>
+                r.id === rule.id ? { ...r, ...patch } : r
+              );
+              onFormChange({ logic_rules: updatedRules });
+            }}
+            onDelete={() => {
+              const updatedRules = (form.logic_rules ?? []).filter((r) => r.id !== rule.id);
+              onFormChange({ logic_rules: updatedRules });
+            }}
           />
         ))}
       </div>

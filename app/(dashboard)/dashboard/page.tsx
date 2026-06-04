@@ -22,6 +22,7 @@ import { createForm } from '@/lib/store';
 import { getWorkspaces } from '@/lib/store/local-workspaces';
 import { cloneTemplate, listTemplatesByScope } from '@/lib/store/templates';
 import { FAVORITES_EVENT, listFavorites } from '@/lib/store/favorites';
+import { toast } from '@/components/ui/Toast';
 import type { Form } from '@/types';
 
 export default function DashboardHome() {
@@ -83,7 +84,7 @@ export default function DashboardHome() {
       router.push(`/forms/${f.id}/edit`);
     } catch (error) {
       console.error('Failed to create form:', error);
-      // TODO: Afficher une notification d'erreur à l'utilisateur
+      toast.error('Impossible de créer un nouveau formulaire. Veuillez réessayer.');
     }
   }
 
@@ -93,7 +94,7 @@ export default function DashboardHome() {
       router.push(`/forms/${cloned.id}/edit`);
     } catch (error) {
       console.error('Failed to clone template:', error);
-      // TODO: Afficher une notification d'erreur à l'utilisateur
+      toast.error('Impossible de créer le formulaire à partir du modèle. Veuillez réessayer.');
     }
   }
 

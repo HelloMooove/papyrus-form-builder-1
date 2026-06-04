@@ -1,5 +1,6 @@
 'use client';
 
+import React, { memo } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Columns2, Copy, GripVertical, Square, Trash2 } from 'lucide-react';
@@ -31,7 +32,7 @@ interface Props {
   onDelete: () => void;
 }
 
-export function SortableFieldCard(props: Props) {
+export const SortableFieldCard = memo(function SortableFieldCard(props: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.field.id
   });
@@ -55,7 +56,7 @@ export function SortableFieldCard(props: Props) {
       />
     </div>
   );
-}
+});
 
 interface CardProps extends Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,7 +84,7 @@ const WEIGHT_CLASSES: Record<NonNullable<FieldStyle['label_weight']>, string> = 
   bold: 'font-bold'
 };
 
-function FieldCard({
+export const FieldCard = memo(function FieldCard({
   field,
   index,
   selected,
@@ -359,7 +360,18 @@ function FieldCard({
       )}
     </div>
   );
-}
+}, (prevProps: Props, nextProps: Props) => {
+  // Optimisation : ne re-render que si les props importantes changent
+  return (
+    prevProps.field === nextProps.field &&
+    prevProps.selected === nextProps.selected &&
+    prevProps.globalStyle === nextProps.globalStyle &&
+    prevProps.cardBg === nextProps.cardBg &&
+    prevProps.scoringEnabled === nextProps.scoringEnabled &&
+    prevProps.theme.fields_icons_enabled === nextProps.theme.fields_icons_enabled &&
+    prevProps.index === nextProps.index
+  );
+});
 
 function ToolbarButton({
   children,

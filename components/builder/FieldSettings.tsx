@@ -31,13 +31,14 @@ interface Props {
   field: Field;
   globalStyle?: import('@/types').FieldStyle;
   onChange: (patch: Partial<Field>) => void;
+  onFormChange: (patch: Partial<Form>) => void;
 }
 
 type Tab = 'content' | 'style' | 'logic';
 
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 
-export function FieldSettings({ form, field, globalStyle, onChange }: Props) {
+export function FieldSettings({ form, field, globalStyle, onChange, onFormChange }: Props) {
   const [tab, setTab] = useState<Tab>('content');
   const meta = FIELD_META[field.type];
   const isLayout = field.type === 'section_break' || field.type === 'image';
@@ -72,7 +73,7 @@ export function FieldSettings({ form, field, globalStyle, onChange }: Props) {
       <div className="flex-1 pt-5">
         {tab === 'content' && <ContentTab form={form} field={field} onChange={onChange} />}
         {tab === 'style' && <StyleEditor field={field} globalStyle={globalStyle} onChange={onChange} />}
-        {tab === 'logic' && supportsLogic && <LogicEditor form={form} field={field} />}
+        {tab === 'logic' && supportsLogic && <LogicEditor form={form} field={field} onFormChange={onFormChange} />}
       </div>
     </div>
   );

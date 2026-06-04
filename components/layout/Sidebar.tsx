@@ -829,11 +829,11 @@ export function Sidebar({
                             <div key={form.id} className="group relative">
                               <div className="flex items-center justify-between w-full">
                                 <Link
-                                  href={`/forms/${form.id}/edit`}
+                                  href={`/forms/${form.id}`}
                                   style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-sm)' }}
                                   className={cn(
                                     'flex items-center gap-2 px-3 text-text-secondary hover:text-text-primary rounded hover:bg-bg-elevated transition truncate flex-1',
-                                    pathname === `/forms/${form.id}/edit` && 'text-text-primary font-medium'
+                                    pathname === `/forms/${form.id}` && 'text-text-primary font-medium'
                                   )}
                                 >
                                   <FileText

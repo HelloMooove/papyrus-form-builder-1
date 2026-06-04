@@ -10,6 +10,7 @@ import { cloneTemplate, listTemplatesByScope } from '@/lib/store/templates';
 import { FAVORITES_EVENT, listFavorites, toggleFavorite } from '@/lib/store/favorites';
 import { cn } from '@/lib/utils';
 import { PreviewModal } from '@/components/builder/PreviewModal';
+import { toast } from '@/components/ui/Toast';
 
 type Tab = 'global' | 'workspace' | 'personal';
 
@@ -65,7 +66,7 @@ export default function TemplatesPage() {
       router.push(`/forms/${cloned.id}/edit`);
     } catch (error) {
       console.error('Failed to clone template:', error);
-      // TODO: Afficher une notification d'erreur à l'utilisateur
+      toast.error('Impossible de créer le formulaire à partir du modèle. Veuillez réessayer.');
     }
   }
 

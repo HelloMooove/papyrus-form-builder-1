@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -17,11 +17,6 @@ import { ArrowLeft, Eye, Send } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import {
-  addField,
-  deleteField,
-  duplicateField,
-  reorderFields,
-  updateField,
   updateForm,
   getForm
 } from '@/lib/store';
@@ -53,48 +48,295 @@ export default function BuilderPage() {
 
   // Indicateur d'état de sauvegarde (Google Forms / Tally style)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Autosave global déboucé (1.5s) du document
+  // Système de queue anti-race condition pour l'autosave
+  const autosaveQueueRef = useRef<{
+    timeout: NodeJS.Timeout | null;
+    pendingRequest: Promise<void> | null;
+    pendingData: Form | null;
+    abortController: AbortController | null;
+  }>({
+    timeout: null,
+    pendingRequest: null,
+    pendingData: null,
+    abortController: null
+  });
+
+  // Autosave global avec protection anti-race condition
   const triggerAutosave = useCallback((updatedForm: Form) => {
     setSaveStatus('unsaved');
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+    const queue = autosaveQueueRef.current;
+
+    // Annuler le timeout précédent s'il existe
+    if (queue.timeout) {
+      clearTimeout(queue.timeout);
     }
 
-    saveTimeoutRef.current = setTimeout(async () => {
+    // Stocker les données les plus récentes
+    queue.pendingData = updatedForm;
+
+    // Programmer la sauvegarde
+    queue.timeout = setTimeout(async () => {
+      // Si une requête est en cours, attendre qu'elle finisse
+      if (queue.pendingRequest) {
+        try {
+          await queue.pendingRequest;
+        } catch (error) {
+          // Ignorer les erreurs de la requête précédente
+        }
+      }
+
+      // Utiliser les données les plus récentes
+      const dataToSave = queue.pendingData;
+      if (!dataToSave) return;
+
+      // Créer un nouveau AbortController pour cette requête
+      if (queue.abortController) {
+        queue.abortController.abort();
+      }
+      queue.abortController = new AbortController();
+
       setSaveStatus('saving');
-      try {
-        await updateForm(updatedForm.id, {
-          fields: updatedForm.fields,
-          theme: updatedForm.theme,
-          title: updatedForm.title,
-          description: updatedForm.description,
-          display_mode: updatedForm.display_mode,
-          scoring_enabled: updatedForm.scoring_enabled,
-          status: updatedForm.status,
-          published_at: updatedForm.published_at
-        });
+
+      // Créer la promesse de sauvegarde - normaliser en Promise pour gérer les modes local et Supabase
+      queue.pendingRequest = Promise.resolve(updateForm(dataToSave.id, {
+        fields: dataToSave.fields,
+        theme: dataToSave.theme,
+        title: dataToSave.title,
+        description: dataToSave.description,
+        display_mode: dataToSave.display_mode,
+        scoring_enabled: dataToSave.scoring_enabled,
+        status: dataToSave.status,
+        published_at: dataToSave.published_at
+      })).then(() => {
+        // Réinitialiser la queue après succès
+        queue.pendingRequest = null;
+        queue.pendingData = null;
+        queue.abortController = null;
         setSaveStatus('saved');
-      } catch (error) {
+      }).catch((error: any) => {
+        // Ne pas traiter les erreurs d'annulation
+        if (error.name === 'AbortError') return;
+
         console.error('Failed to autosave form:', error);
         toast.error('Erreur lors de la sauvegarde automatique');
         setSaveStatus('unsaved');
+
+        // Réinitialiser la queue après erreur
+        queue.pendingRequest = null;
+        queue.abortController = null;
+      });
+
+      try {
+        await queue.pendingRequest;
+      } catch (error) {
+        // Erreur déjà gérée dans le catch ci-dessus
       }
     }, 1500);
   }, []);
 
-  // Nettoyer le minuteur au démontage
+  // Capteur pointer avec un seuil pour ne pas déclencher le drag sur un simple clic
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // Helper pour créer un ID unique
+  const generateId = useCallback((): string => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }, []);
+
+  /** Cliquer sur un champ le sélectionne. Pour revenir au design global, cliquer dans le vide du canvas. */
+  const selectField = useCallback((id: string) => {
+    setSelectedFieldId(id);
+    setSelectedHeaderElement(null);
+  }, []);
+
+  const selectHeaderElement = useCallback((element: 'banner' | 'logo') => {
+    setSelectedHeaderElement(element);
+    setSelectedFieldId(null);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedFieldId(null);
+    setSelectedHeaderElement(null);
+  }, []);
+
+  const handleFieldChange = useCallback((fieldId: string, patch: Partial<Field>) => {
+    if (!form) return;
+
+    const fieldsList = form.fields ?? [];
+    const updatedForm = {
+      ...form,
+      fields: fieldsList.map(f => f.id === fieldId ? { ...f, ...patch } : f)
+    };
+
+    setForm(updatedForm);
+    triggerAutosave(updatedForm);
+  }, [form, triggerAutosave]);
+
+  const handleDuplicate = useCallback((fieldId: string) => {
+    if (!form || !form.fields) return;
+
+    const fieldsList = form.fields;
+    if (fieldsList.length >= LIMITS.FORM_FIELDS_MAX) {
+      toast.error(`Limite de ${LIMITS.FORM_FIELDS_MAX} champs atteinte`);
+      return;
+    }
+
+    const originalField = fieldsList.find(f => f.id === fieldId);
+    if (!originalField) return;
+
+    const idx = fieldsList.findIndex(f => f.id === fieldId);
+
+    const duplicatedField = {
+      ...originalField,
+      id: generateId(),
+      options: originalField.options?.map(o => ({ ...o, id: generateId() })) ?? [],
+      field_order: idx + 1
+    };
+
+    const newFields = [...fieldsList];
+    newFields.splice(idx + 1, 0, duplicatedField);
+    const reindexed = newFields.map((f, i) => ({ ...f, field_order: i }));
+
+    const updatedForm = {
+      ...form,
+      fields: reindexed
+    };
+
+    setForm(updatedForm);
+    setSelectedFieldId(duplicatedField.id);
+    triggerAutosave(updatedForm);
+  }, [form, generateId, setSelectedFieldId, triggerAutosave]);
+
+  const handleDelete = useCallback((fieldId: string) => {
+    if (!form || !form.fields) return;
+
+    const fieldsList = form.fields;
+    const updatedForm = {
+      ...form,
+      fields: fieldsList.filter(f => f.id !== fieldId)
+        .map((f, i) => ({ ...f, field_order: i }))
+    };
+
+    setForm(updatedForm);
+    if (selectedFieldId === fieldId) setSelectedFieldId(null);
+    triggerAutosave(updatedForm);
+  }, [form, selectedFieldId, setSelectedFieldId, triggerAutosave]);
+
+  const handleDragEnd = useCallback((e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id || !form?.fields) return;
+
+    const fieldsList = form.fields;
+    const ids = fieldsList.map((f) => f.id);
+    const oldIdx = ids.indexOf(active.id as string);
+    const newIdx = ids.indexOf(over.id as string);
+    if (oldIdx === -1 || newIdx === -1) return;
+
+    const reorderedFields = arrayMove(fieldsList, oldIdx, newIdx)
+      .map((f, i) => ({ ...f, field_order: i }));
+
+    const updatedForm = {
+      ...form,
+      fields: reorderedFields
+    };
+
+    setForm(updatedForm);
+    triggerAutosave(updatedForm);
+  }, [form, triggerAutosave]);
+
+  // Helper pour créer un champ optimiste
+  const createOptimisticField = useCallback((type: FieldType, formId: string, currentFieldsCount: number): Field => {
+    return {
+      id: generateId(),
+      form_id: formId,
+      type,
+      label: { fr: 'Nouvelle question' },
+      description: { fr: '' },
+      placeholder: { fr: '' },
+      options:
+        type === 'single_choice' || type === 'multiple_choice' || type === 'dropdown'
+          ? [
+              { id: generateId(), label: { fr: '' } },
+              { id: generateId(), label: { fr: '' } }
+            ]
+          : type === 'matrix'
+            ? [
+                { id: generateId(), label: { fr: 'Pas du tout' } },
+                { id: generateId(), label: { fr: 'Plutôt non' } },
+                { id: generateId(), label: { fr: 'Neutre' } },
+                { id: generateId(), label: { fr: 'Plutôt oui' } },
+                { id: generateId(), label: { fr: 'Tout à fait' } }
+              ]
+            : [],
+      rows:
+        type === 'matrix'
+          ? [
+              { id: generateId(), label: { fr: 'Critère 1' } },
+              { id: generateId(), label: { fr: 'Critère 2' } },
+              { id: generateId(), label: { fr: 'Critère 3' } }
+            ]
+          : undefined,
+      required: false,
+      field_order: currentFieldsCount,
+      validation: type === 'matrix' ? { matrix_mode: 'single' } : {}
+    };
+  }, [generateId]);
+
+  const handleAdd = useCallback((type: FieldType) => {
+    if (!form || (form.fields ?? []).length >= LIMITS.FORM_FIELDS_MAX) {
+      toast.error(`Limite de ${LIMITS.FORM_FIELDS_MAX} champs atteinte`);
+      return;
+    }
+
+    const currentFields = form.fields ?? [];
+    const optimisticField = createOptimisticField(type, form.id, currentFields.length);
+    const updatedForm = {
+      ...form,
+      fields: [...currentFields, optimisticField]
+    };
+
+    setForm(updatedForm);
+    setSelectedFieldId(optimisticField.id);
+    triggerAutosave(updatedForm);
+  }, [form, createOptimisticField, setSelectedFieldId, triggerAutosave]);
+
+  // Mémorisation des handlers par field ID pour éviter les re-renders
+  const fieldHandlers = useMemo(() => {
+    const handlers: Record<string, {
+      onSelect: () => void;
+      onChange: (patch: Partial<Field>) => void;
+      onDuplicate: () => void;
+      onDelete: () => void;
+    }> = {};
+
+    const fieldsList = form?.fields ?? [];
+    fieldsList.forEach((field) => {
+      handlers[field.id] = {
+        onSelect: () => selectField(field.id),
+        onChange: (patch: Partial<Field>) => handleFieldChange(field.id, patch),
+        onDuplicate: () => handleDuplicate(field.id),
+        onDelete: () => handleDelete(field.id)
+      };
+    });
+
+    return handlers;
+  }, [form?.fields, selectField, handleFieldChange, handleDuplicate, handleDelete]);
+
+  // Nettoyer la queue autosave au démontage
   useEffect(() => {
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+      const queue = autosaveQueueRef.current;
+      if (queue.timeout) {
+        clearTimeout(queue.timeout);
+      }
+      if (queue.abortController) {
+        queue.abortController.abort();
       }
     };
   }, []);
-
-  // Capteur pointer avec un seuil pour ne pas déclencher le drag sur un simple clic
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   // Charger le formulaire initial
   useEffect(() => {
@@ -133,170 +375,6 @@ export default function BuilderPage() {
 
   const fields = form?.fields ?? [];
   const selected = fields.find((f) => f.id === selectedFieldId) ?? null;
-
-  // Helper pour créer un ID unique
-  function generateId(): string {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      return crypto.randomUUID();
-    }
-    return `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  }
-
-  // Helper pour créer un champ optimiste
-  function createOptimisticField(type: FieldType, formId: string): Field {
-    return {
-      id: generateId(),
-      form_id: formId,
-      type,
-      label: { fr: 'Nouvelle question' },
-      description: { fr: '' },
-      placeholder: { fr: '' },
-      options:
-        type === 'single_choice' || type === 'multiple_choice' || type === 'dropdown'
-          ? [
-              { id: generateId(), label: { fr: '' } },
-              { id: generateId(), label: { fr: '' } }
-            ]
-          : type === 'matrix'
-            ? [
-                { id: generateId(), label: { fr: 'Pas du tout' } },
-                { id: generateId(), label: { fr: 'Plutôt non' } },
-                { id: generateId(), label: { fr: 'Neutre' } },
-                { id: generateId(), label: { fr: 'Plutôt oui' } },
-                { id: generateId(), label: { fr: 'Tout à fait' } }
-              ]
-            : [],
-      rows:
-        type === 'matrix'
-          ? [
-              { id: generateId(), label: { fr: 'Critère 1' } },
-              { id: generateId(), label: { fr: 'Critère 2' } },
-              { id: generateId(), label: { fr: 'Critère 3' } }
-            ]
-          : undefined,
-      required: false,
-      field_order: fields.length,
-      validation: type === 'matrix' ? { matrix_mode: 'single' } : {}
-    };
-  }
-
-  function handleAdd(type: FieldType) {
-    if (!form || fields.length >= LIMITS.FORM_FIELDS_MAX) {
-      toast.error(`Limite de ${LIMITS.FORM_FIELDS_MAX} champs atteinte`);
-      return;
-    }
-
-    const optimisticField = createOptimisticField(type, form.id);
-    const updatedForm = {
-      ...form,
-      fields: [...fields, optimisticField]
-    };
-
-    // Update optimiste immédiat
-    setForm(updatedForm);
-    setSelectedFieldId(optimisticField.id);
-    triggerAutosave(updatedForm);
-  }
-
-  /** Cliquer sur un champ le sélectionne. Pour revenir au design global, cliquer dans le vide du canvas. */
-  function selectField(id: string) {
-    setSelectedFieldId(id);
-    setSelectedHeaderElement(null);
-  }
-
-  function selectHeaderElement(element: 'banner' | 'logo') {
-    setSelectedHeaderElement(element);
-    setSelectedFieldId(null);
-  }
-
-  function clearSelection() {
-    setSelectedFieldId(null);
-    setSelectedHeaderElement(null);
-  }
-
-  function handleFieldChange(fieldId: string, patch: Partial<Field>) {
-    if (!form) return;
-
-    const updatedForm = {
-      ...form,
-      fields: fields.map(f => f.id === fieldId ? { ...f, ...patch } : f)
-    };
-
-    // Update optimiste immédiat côté React
-    setForm(updatedForm);
-    triggerAutosave(updatedForm);
-  }
-
-  function handleDuplicate(fieldId: string) {
-    if (!form || fields.length >= LIMITS.FORM_FIELDS_MAX) {
-      toast.error(`Limite de ${LIMITS.FORM_FIELDS_MAX} champs atteinte`);
-      return;
-    }
-
-    const originalField = fields.find(f => f.id === fieldId);
-    if (!originalField) return;
-
-    const idx = fields.findIndex(f => f.id === fieldId);
-
-    // Créer la copie optimiste
-    const duplicatedField = {
-      ...originalField,
-      id: generateId(),
-      options: originalField.options?.map(o => ({ ...o, id: generateId() })) ?? [],
-      field_order: idx + 1
-    };
-
-    // Update optimiste immédiat
-    const newFields = [...fields];
-    newFields.splice(idx + 1, 0, duplicatedField);
-    const reindexed = newFields.map((f, i) => ({ ...f, field_order: i }));
-
-    const updatedForm = {
-      ...form,
-      fields: reindexed
-    };
-
-    setForm(updatedForm);
-    setSelectedFieldId(duplicatedField.id);
-    triggerAutosave(updatedForm);
-  }
-
-  function handleDelete(fieldId: string) {
-    if (!form) return;
-
-    // Update optimiste immédiat
-    const updatedForm = {
-      ...form,
-      fields: fields.filter(f => f.id !== fieldId)
-        .map((f, i) => ({ ...f, field_order: i }))
-    };
-
-    setForm(updatedForm);
-    if (selectedFieldId === fieldId) setSelectedFieldId(null);
-    triggerAutosave(updatedForm);
-  }
-
-  function handleDragEnd(e: DragEndEvent) {
-    const { active, over } = e;
-    if (!over || active.id === over.id || !form) return;
-
-    const ids = fields.map((f) => f.id);
-    const oldIdx = ids.indexOf(active.id as string);
-    const newIdx = ids.indexOf(over.id as string);
-    if (oldIdx === -1 || newIdx === -1) return;
-
-    const reorderedFields = arrayMove(fields, oldIdx, newIdx)
-      .map((f, i) => ({ ...f, field_order: i }));
-
-    // Update optimiste immédiat
-    const updatedForm = {
-      ...form,
-      fields: reorderedFields
-    };
-
-    setForm(updatedForm);
-    triggerAutosave(updatedForm);
-  }
 
   async function handleTitleBlur() {
     if (!form || !titleDraft || titleDraft === form.title) return;
@@ -625,22 +703,25 @@ export default function BuilderPage() {
                     <EmptyCanvas />
                   ) : (
                     <div className="grid grid-cols-2 gap-4">
-                      {fields.map((field, i) => (
-                        <SortableFieldCard
-                          key={field.id}
-                          field={field}
-                          index={i}
-                          selected={selectedFieldId === field.id}
-                          globalStyle={form.theme.field_style}
-                          cardBg={form.theme.field_bg_color}
-                          theme={form.theme}
-                          scoringEnabled={form.scoring_enabled}
-                          onSelect={() => selectField(field.id)}
-                          onChange={(patch) => handleFieldChange(field.id, patch)}
-                          onDuplicate={() => handleDuplicate(field.id)}
-                          onDelete={() => handleDelete(field.id)}
-                        />
-                      ))}
+                      {fields.map((field, i) => {
+                        const handlers = fieldHandlers[field.id];
+                        return (
+                          <SortableFieldCard
+                            key={field.id}
+                            field={field}
+                            index={i}
+                            selected={selectedFieldId === field.id}
+                            globalStyle={form.theme.field_style}
+                            cardBg={form.theme.field_bg_color}
+                            theme={form.theme}
+                            scoringEnabled={form.scoring_enabled}
+                            onSelect={handlers.onSelect}
+                            onChange={handlers.onChange}
+                            onDuplicate={handlers.onDuplicate}
+                            onDelete={handlers.onDelete}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </SortableContext>
@@ -656,6 +737,7 @@ export default function BuilderPage() {
                 field={selected}
                 globalStyle={form.theme.field_style}
                 onChange={(patch) => handleFieldChange(selected.id, patch)}
+                onFormChange={handleFormChange}
               />
             ) : selectedHeaderElement ? (
               <FormHeaderSettings
