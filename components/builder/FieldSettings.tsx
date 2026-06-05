@@ -173,6 +173,7 @@ function ContentTab({ form, field, onChange }: { form: Form; field: Field; onCha
   }
 
   const isLayout = field.type === 'section_break' || field.type === 'statement';
+  const supportsLogic = !isLayout && field.type !== 'image' && field.type !== 'video';
 
   return (
     <div className="space-y-5">
@@ -203,6 +204,8 @@ function ContentTab({ form, field, onChange }: { form: Form; field: Field; onCha
           )}
         </Section>
       )}
+
+
 
       {/* ICÔNE DU CHAMP */}
       <Section title="Icône du champ">
@@ -341,11 +344,10 @@ function ContentTab({ form, field, onChange }: { form: Form; field: Field; onCha
                   key={n}
                   type="button"
                   onClick={() => patchValidation({ options_columns: n as 1 | 2 | 3 })}
-                  className={`rounded-md border py-2 text-sm font-medium transition ${
-                    active
+                  className={`rounded-md border py-2 text-sm font-medium transition ${active
                       ? 'border-accent bg-accent/5 text-text-primary'
                       : 'border-border-strong text-text-secondary hover:border-accent'
-                  }`}
+                    }`}
                 >
                   {n}
                 </button>
@@ -394,15 +396,15 @@ function ContentTab({ form, field, onChange }: { form: Form; field: Field; onCha
       {(field.type === 'single_choice' ||
         field.type === 'multiple_choice' ||
         field.type === 'dropdown') && (
-        <Section title="Ordre des options">
-          <Switch
-            checked={field.validation?.randomize_options ?? false}
-            onChange={(randomize_options) => patchValidation({ randomize_options })}
-            label="Randomiser l'ordre des options"
-            description="Mélange aléatoire à chaque chargement pour le répondant. Ton ordre dans le builder reste intact."
-          />
-        </Section>
-      )}
+          <Section title="Ordre des options">
+            <Switch
+              checked={field.validation?.randomize_options ?? false}
+              onChange={(randomize_options) => patchValidation({ randomize_options })}
+              label="Randomiser l'ordre des options"
+              description="Mélange aléatoire à chaque chargement pour le répondant. Ton ordre dans le builder reste intact."
+            />
+          </Section>
+        )}
 
       {field.type === 'multiple_choice' && (
         <Section title="Sous-questions par option cochée">
@@ -499,11 +501,10 @@ function ContentTab({ form, field, onChange }: { form: Form; field: Field; onCha
                     key={type.value}
                     type="button"
                     onClick={() => patchValidation({ response_type: type.value })}
-                    className={`rounded-md border px-2 py-2 text-xs transition ${
-                      active
+                    className={`rounded-md border px-2 py-2 text-xs transition ${active
                         ? 'border-accent bg-accent/5 text-text-primary'
                         : 'border-border-strong text-text-secondary hover:border-accent'
-                    }`}
+                      }`}
                   >
                     {type.label}
                   </button>
@@ -546,11 +547,10 @@ function ContentTab({ form, field, onChange }: { form: Form; field: Field; onCha
                           key={n}
                           type="button"
                           onClick={() => patchValidation({ max_decimals: n })}
-                          className={`rounded-md border py-2 text-sm font-medium transition ${
-                            active
+                          className={`rounded-md border py-2 text-sm font-medium transition ${active
                               ? 'border-accent bg-accent/5 text-text-primary'
                               : 'border-border-strong text-text-secondary hover:border-accent'
-                          }`}
+                            }`}
                         >
                           {n}
                         </button>
@@ -794,11 +794,10 @@ function MediaSettings({ field, patchValidation, fileInputRef, handleImageUpload
                     key={a}
                     type="button"
                     onClick={() => patchValidation({ alignment: a })}
-                    className={`rounded-md border px-3 py-2 text-xs transition ${
-                      (field.validation?.alignment ?? 'center') === a
+                    className={`rounded-md border px-3 py-2 text-xs transition ${(field.validation?.alignment ?? 'center') === a
                         ? 'border-accent bg-accent/5 text-text-primary'
                         : 'border-border-strong text-text-secondary hover:border-accent'
-                    }`}
+                      }`}
                   >
                     {a === 'left' ? 'Gauche' : a === 'right' ? 'Droite' : 'Centre'}
                   </button>

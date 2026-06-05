@@ -45,6 +45,40 @@ export default function BuilderPage() {
   const [selectedHeaderElement, setSelectedHeaderElement] = useState<'banner' | 'logo' | null>(null);
   const [titleDraft, setTitleDraft] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+
+  // Charger le nom du workspace
+  useEffect(() => {
+    const fetchWorkspaceName = async () => {
+      const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
+      const wsId = isLocal ? form?.workspace_id : form?.team_id;
+      if (!wsId) return;
+
+      if (isLocal) {
+        try {
+          const { getWorkspace } = await import('@/lib/store/local-workspaces');
+          const ws = getWorkspace(wsId);
+          if (ws) setWorkspaceName(ws.name);
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        try {
+          const res = await fetch('/api/teams');
+          if (res.ok) {
+            const list = await res.json();
+            const ws = list.find((t: any) => t.id === wsId);
+            if (ws) setWorkspaceName(ws.name);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
+    if (form) {
+      fetchWorkspaceName();
+    }
+  }, [form?.workspace_id, form?.team_id, form]);
 
   // Indicateur d'état de sauvegarde (Google Forms / Tally style)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
@@ -279,11 +313,11 @@ export default function BuilderPage() {
               { id: generateId(), label: { fr: 'Critère 3' } }
             ]
           : undefined,
-      required: false,
+      required: form?.require_all_by_default ?? false,
       field_order: currentFieldsCount,
       validation: type === 'matrix' ? { matrix_mode: 'single' } : {}
     };
-  }, [generateId]);
+  }, [generateId, form?.require_all_by_default]);
 
   const handleAdd = useCallback((type: FieldType) => {
     if (!form || (form.fields ?? []).length >= LIMITS.FORM_FIELDS_MAX) {
@@ -473,6 +507,7 @@ export default function BuilderPage() {
       });
       if (saved) setForm(saved);
       toast.success('Formulaire publié avec succès !');
+      router.push(`/forms/${form.id}?tab=share`);
     } catch (error) {
       console.error('Failed to publish:', error);
       setForm(previousForm);
@@ -608,7 +643,15 @@ export default function BuilderPage() {
           </div>
           {form.status === 'draft' && <Badge variant="draft">Brouillon</Badge>}
           {form.status === 'published' && <Badge variant="published">Publié</Badge>}
-          <span className="papyrus-meta ml-2 text-xs">i. {fields.length} champ{fields.length > 1 ? 's' : ''}</span>
+          <span className="papyrus-meta ml-2 text-xs flex items-center gap-1.5">
+            <span>i. {fields.length} champ{fields.length > 1 ? 's' : ''}</span>
+            {workspaceName && (
+              <>
+                <span>·</span>
+                <span className="font-semibold text-text-secondary">{workspaceName}</span>
+              </>
+            )}
+          </span>
           <span className={cn(
             "ml-3 text-[11px] font-medium transition-all duration-300 flex items-center gap-1.5",
             saveStatus === 'saved' ? "text-green-600 dark:text-green-400 opacity-80" :
@@ -672,14 +715,14 @@ export default function BuilderPage() {
           }}
         >
           {/* Palette */}
-          <aside className="w-72 overflow-y-auto border-r border-border bg-bg-surface p-5">
+          <aside style={{ width: 'var(--palette-width)' }} className="hidden lg:block shrink-0 overflow-y-auto border-r border-border bg-bg-surface p-5">
             <FieldPalette onAdd={handleAdd} disabled={fields.length >= LIMITS.FORM_FIELDS_MAX} />
           </aside>
 
           {/* Canvas — clic dans le vide désélectionne (retour au panneau de design) */}
           <div
-            className="flex-1 overflow-y-auto px-12 py-10 transition-colors"
-            style={{ ['--accent' as string]: form.theme.accent }}
+            className="flex-1 overflow-y-auto transition-colors"
+            style={{ padding: 'var(--layout-padding)', ['--accent' as string]: form.theme.accent }}
             onClick={(e) => {
               // Ne désélectionner que si on clique vraiment sur le canvas, pas sur ses enfants
               if (e.target === e.currentTarget) {
@@ -730,7 +773,7 @@ export default function BuilderPage() {
           </div>
 
           {/* Settings */}
-          <aside className="w-80 overflow-y-auto border-l border-border bg-bg-surface p-5">
+          <aside style={{ width: 'var(--settings-width)' }} className="hidden lg:block shrink-0 overflow-y-auto border-l border-border bg-bg-surface p-5">
             {selected ? (
               <FieldSettings
                 form={form}

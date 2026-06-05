@@ -16,6 +16,7 @@ export const getForm = isLocal ? localStore.getForm : supabaseStore.getForm;
 export const createForm = isLocal ? localStore.createForm : supabaseStore.createForm;
 export const updateForm = isLocal ? localStore.updateForm : supabaseStore.updateForm;
 export const deleteForm = isLocal ? localStore.deleteForm : supabaseStore.deleteForm;
+export const importForm = isLocal ? localStore.importForm : supabaseStore.importForm;
 
 export const addField = isLocal ? localStore.addField : supabaseStore.addField;
 export const updateField = isLocal ? localStore.updateField : supabaseStore.updateField;

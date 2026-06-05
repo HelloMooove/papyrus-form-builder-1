@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Archive,
   ArchiveRestore,
@@ -39,12 +39,54 @@ import { toast } from '@/components/ui/Toast';
 
 type Tab = 'overview' | 'responses' | 'share';
 
-export default function FormDashboardPage() {
+function FormDashboardContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { form, loading } = useForm(params.id);
   const [tab, setTab] = useState<Tab>('overview');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+
+  // Charger le nom du workspace
+  useEffect(() => {
+    const fetchWorkspaceName = async () => {
+      const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
+      const wsId = isLocal ? form?.workspace_id : form?.team_id;
+      if (!wsId) return;
+
+      if (isLocal) {
+        try {
+          const { getWorkspace } = await import('@/lib/store/local-workspaces');
+          const ws = getWorkspace(wsId);
+          if (ws) setWorkspaceName(ws.name);
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        try {
+          const res = await fetch('/api/teams');
+          if (res.ok) {
+            const list = await res.json();
+            const ws = list.find((t: any) => t.id === wsId);
+            if (ws) setWorkspaceName(ws.name);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
+    if (form) {
+      fetchWorkspaceName();
+    }
+  }, [form?.workspace_id, form?.team_id, form]);
+
+  useEffect(() => {
+    const activeTab = searchParams.get('tab') as Tab;
+    if (activeTab && ['overview', 'responses', 'share'].includes(activeTab)) {
+      setTab(activeTab);
+    }
+  }, [searchParams]);
 
   if (loading) return null;
 
@@ -97,6 +139,7 @@ export default function FormDashboardPage() {
       {/* Header */}
       <Header
         form={form}
+        workspaceName={workspaceName}
         menuOpen={menuOpen}
         setMenuOpen={setMenuOpen}
         onClone={handleClone}
@@ -131,11 +174,20 @@ export default function FormDashboardPage() {
   );
 }
 
+export default function FormDashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <FormDashboardContent />
+    </Suspense>
+  );
+}
+
 // ============================================================================
 // Header — titre + statut + actions
 // ============================================================================
 function Header({
   form,
+  workspaceName,
   menuOpen,
   setMenuOpen,
   onClone,
@@ -144,6 +196,7 @@ function Header({
   onDelete
 }: {
   form: Form;
+  workspaceName: string | null;
   menuOpen: boolean;
   setMenuOpen: (v: boolean) => void;
   onClone: () => void;
@@ -169,7 +222,15 @@ function Header({
           {form.status === 'draft' && <Badge variant="draft">Brouillon</Badge>}
           {form.status === 'closed' && <Badge variant="closed">Clos</Badge>}
         </div>
-        <p className="papyrus-meta mt-1 text-sm not-italic">i. /{form.slug}</p>
+        <p className="papyrus-meta mt-1 text-sm not-italic flex flex-wrap items-center gap-1.5">
+          <span>i. /{form.slug}</span>
+          {workspaceName && (
+            <>
+              <span>·</span>
+              <span className="font-semibold text-text-secondary">{workspaceName}</span>
+            </>
+          )}
+        </p>
       </div>
 
       <div className="flex items-center gap-2">

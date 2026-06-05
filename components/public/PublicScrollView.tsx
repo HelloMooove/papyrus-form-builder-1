@@ -7,6 +7,7 @@ import { FieldRenderer } from '@/components/builder/FieldRenderer';
 import { ScoreDisplay } from '@/components/respondent/ScoreDisplay';
 import { PublicFieldCard } from './PublicFieldCard';
 import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Props {
   form: Form;
@@ -59,8 +60,8 @@ export function PublicScrollView({
         <FormHeader
           theme={form.theme}
           selectedElement={null}
-          onSelectBanner={() => {}}
-          onSelectLogo={() => {}}
+          onSelectBanner={() => { }}
+          onSelectLogo={() => { }}
           preview={true}
         />
         <header className="mb-8">
@@ -79,19 +80,30 @@ export function PublicScrollView({
           </div>
         )}
 
-        {fields.map((field) => {
-          const span = (field.layout_width ?? 'full') === 'full' ? 'col-span-2' : 'col-span-1';
-          return (
-            <PublicFieldCard
-              key={field.id}
-              field={field}
-              form={form}
-              span={span}
-              responses={responses}
-              updateResponse={updateResponse}
-            />
-          );
-        })}
+        <AnimatePresence initial={false}>
+          {fields.map((field) => {
+            const span = (field.layout_width ?? 'full') === 'full' ? 'col-span-2' : 'col-span-1';
+            return (
+              <motion.div
+                key={field.id}
+                layout
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className={span}
+              >
+                <PublicFieldCard
+                  field={field}
+                  form={form}
+                  span="w-full"
+                  responses={responses}
+                  updateResponse={updateResponse}
+                />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
       {/* Score de maturité */}

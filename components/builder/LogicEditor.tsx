@@ -1,9 +1,10 @@
 'use client';
 
-import { Plus, Trash2, Award } from 'lucide-react';
+import { Plus, Trash2, Award, X } from 'lucide-react';
 import type { Field, Form, LogicCondition, LogicAction, LogicRule, DisplayMode } from '@/types';
 import { FIELD_META } from '@/lib/field-meta';
 import { getFieldsInSameSection, getSections } from '@/lib/sections';
+import { cn } from '@/lib/utils';
 
 interface Props {
   form: Form;
@@ -11,20 +12,39 @@ interface Props {
   onFormChange: (patch: Partial<Form>) => void;
 }
 
-const CONDITIONS: { value: LogicCondition; label: string; types: string[] }[] = [
-  { value: 'equals', label: 'est égal à', types: ['*'] },
-  { value: 'not_equals', label: 'est différent de', types: ['*'] },
-  { value: 'contains', label: 'contient', types: ['short_text', 'long_text', 'email', 'url'] },
-  { value: 'greater_than', label: 'est supérieur à', types: ['number', 'rating', 'nps'] },
-  { value: 'less_than', label: 'est inférieur à', types: ['number', 'rating', 'nps'] }
-];
-
 const ALL_ACTIONS: { value: LogicAction; label: string; modes: DisplayMode[] }[] = [
   { value: 'show_field', label: 'Afficher', modes: ['scroll', 'sections'] },
   { value: 'hide_field', label: 'Masquer', modes: ['scroll', 'sections'] },
   { value: 'jump_to', label: 'Aller à', modes: ['scroll', 'sections', 'typeform'] },
   { value: 'end_form', label: 'Terminer le formulaire', modes: ['scroll', 'sections', 'typeform'] }
 ];
+
+function getOperatorsForFieldType(type: string) {
+  if (['short_text', 'long_text', 'email', 'url', 'phone'].includes(type)) {
+    return [
+      { value: 'equals', label: 'est égal à' },
+      { value: 'not_equals', label: 'est différent de' },
+      { value: 'contains', label: 'contient' },
+      { value: 'not_contains', label: 'ne contient pas' }
+    ];
+  }
+  if (['number', 'rating', 'nps'].includes(type)) {
+    return [
+      { value: 'equals', label: 'est égal à' },
+      { value: 'not_equals', label: 'est différent de' },
+      { value: 'greater_than', label: 'est supérieur à' },
+      { value: 'less_than', label: 'est inférieur à' }
+    ];
+  }
+  return [
+    { value: 'equals', label: 'est égal à' },
+    { value: 'not_equals', label: 'est différent de' }
+  ];
+}
+
+function isChoiceField(field?: Field) {
+  return field ? ['single_choice', 'multiple_choice', 'dropdown'].includes(field.type) : false;
+}
 
 /**
  * Calcule le score de maturité d'un champ (points min/max disponibles).
@@ -76,17 +96,14 @@ function getFieldScoreInfo(field: Field): { minPoints: number; maxPoints: number
 export function LogicEditor({ form, field, onFormChange }: Props) {
   const mode: DisplayMode = form.display_mode ?? 'scroll';
   const allFields = form.fields ?? [];
-  const rules = (form.logic_rules ?? []).filter((r) => r.source_field_id === field.id);
+  const rules = (form.logic_rules ?? []).filter((r) =>
+    r.conditions?.some((c) => c.source_field_id === field.id)
+  );
   const scoreInfo = getFieldScoreInfo(field);
   const scoringEnabled = form?.scoring_enabled ?? false;
 
   // Actions disponibles selon le mode
   const availableActions = ALL_ACTIONS.filter((a) => a.modes.includes(mode));
-
-  // Conditions disponibles selon le type du champ source
-  const availableConditions = CONDITIONS.filter(
-    (c) => c.types.includes('*') || c.types.includes(field.type)
-  );
 
   /** Cibles disponibles selon l'action choisie et le mode. */
   function getTargetsForAction(action: LogicAction): Field[] {
@@ -114,8 +131,6 @@ export function LogicEditor({ form, field, onFormChange }: Props) {
     );
   }
 
-  const isChoice = ['single_choice', 'multiple_choice', 'dropdown'].includes(field.type);
-
   function handleAdd() {
     const defaultAction = availableActions[0]?.value ?? 'end_form';
     const initialTargets = getTargetsForAction(defaultAction);
@@ -123,9 +138,12 @@ export function LogicEditor({ form, field, onFormChange }: Props) {
     const newRule: LogicRule = {
       id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       form_id: form.id,
-      source_field_id: field.id,
-      condition: 'equals',
-      condition_value: (field.options || [])[0]?.id ?? '',
+      conditions: [{
+        source_field_id: field.id,
+        operator: 'equals',
+        value: (field.options || [])[0]?.id ?? ''
+      }],
+      conditions_operator: 'AND',
       action_type: defaultAction,
       target_field_id: initialTargets[0]?.id,
       rule_order: rules.length
@@ -166,7 +184,7 @@ export function LogicEditor({ form, field, onFormChange }: Props) {
           {field.type === 'multiple_choice' && (
             <p className="mt-1 text-[10px] text-text-tertiary">
               Mode multiple : les points se cumulent si plusieurs options sont sélectionnées.
-            </p>
+             </p>
           )}
         </div>
       )}
@@ -183,11 +201,9 @@ export function LogicEditor({ form, field, onFormChange }: Props) {
             key={rule.id}
             rule={rule}
             index={i}
-            sourceField={field}
-            availableConditions={availableConditions}
+            form={form}
             availableActions={availableActions}
             getTargetsForAction={getTargetsForAction}
-            isChoice={isChoice}
             onChange={(patch) => {
               const updatedRules = (form.logic_rules ?? []).map((r) =>
                 r.id === rule.id ? { ...r, ...patch } : r
@@ -217,11 +233,9 @@ export function LogicEditor({ form, field, onFormChange }: Props) {
 interface RuleCardProps {
   rule: LogicRule;
   index: number;
-  sourceField: Field;
-  availableConditions: { value: LogicCondition; label: string }[];
+  form: Form;
   availableActions: { value: LogicAction; label: string }[];
   getTargetsForAction: (action: LogicAction) => Field[];
-  isChoice: boolean;
   onChange: (patch: Partial<LogicRule>) => void;
   onDelete: () => void;
 }
@@ -229,21 +243,55 @@ interface RuleCardProps {
 function RuleCard({
   rule,
   index,
-  sourceField,
-  availableConditions,
+  form,
   availableActions,
   getTargetsForAction,
-  isChoice,
   onChange,
   onDelete
 }: RuleCardProps) {
   const showTarget = rule.action_type !== 'end_form';
   const targets = getTargetsForAction(rule.action_type);
+  const allFields = form.fields ?? [];
+  const sourceFields = allFields.filter(f => !['section_break', 'image', 'video', 'statement'].includes(f.type));
+
+  const handleAddCondition = () => {
+    const defaultField = sourceFields[0] || allFields[0];
+    if (!defaultField) return;
+    const newCond: LogicCondition = {
+      source_field_id: defaultField.id,
+      operator: 'equals',
+      value: (defaultField.options || [])[0]?.id ?? ''
+    };
+    onChange({ conditions: [...rule.conditions, newCond] });
+  };
+
+  const handleRemoveCondition = (condIdx: number) => {
+    const nextConditions = rule.conditions.filter((_, idx) => idx !== condIdx);
+    onChange({ conditions: nextConditions });
+  };
+
+  const handleConditionChange = (condIdx: number, patch: Partial<LogicCondition>) => {
+    const nextConditions = rule.conditions.map((c, idx) => {
+      if (idx === condIdx) {
+        const next = { ...c, ...patch };
+        // Si le champ source change, réinitialiser l'opérateur et la valeur vers les valeurs par défaut du nouveau champ
+        if (patch.source_field_id) {
+          const newField = allFields.find(f => f.id === patch.source_field_id);
+          const ops = getOperatorsForFieldType(newField?.type || '');
+          next.operator = (ops[0]?.value || 'equals') as any;
+          next.value = (newField?.options || [])[0]?.id ?? '';
+        }
+        return next;
+      }
+      return c;
+    });
+    onChange({ conditions: nextConditions });
+  };
 
   return (
-    <div className="space-y-2 rounded-md border border-border bg-bg-base p-3">
+    <div className="space-y-3 rounded-md border border-border bg-bg-base p-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-text-secondary">Règle {index + 1}</span>
+        <span className="text-xs font-semibold text-text-secondary">Règle {index + 1}</span>
         <button
           type="button"
           onClick={onDelete}
@@ -254,110 +302,182 @@ function RuleCard({
         </button>
       </div>
 
-      <div className="space-y-2 text-sm">
-        <Row label="Si la réponse">
-          <Select
-            value={rule.condition}
-            onChange={(v) => onChange({ condition: v as LogicCondition })}
-            options={availableConditions.map((c) => ({ value: c.value, label: c.label }))}
-          />
-        </Row>
+      {/* ET/OU Toggle */}
+      {rule.conditions.length >= 2 && (
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[11px] text-text-tertiary uppercase font-medium">Combiner avec :</span>
+          <div className="inline-flex rounded-md border border-border p-0.5 bg-bg-surface">
+            <button
+              type="button"
+              onClick={() => onChange({ conditions_operator: 'AND' })}
+              className={cn(
+                "px-2 py-0.5 text-[10px] font-bold rounded transition",
+                rule.conditions_operator === 'AND' ? "bg-accent text-white" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              ET
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ conditions_operator: 'OR' })}
+              className={cn(
+                "px-2 py-0.5 text-[10px] font-bold rounded transition",
+                rule.conditions_operator === 'OR' ? "bg-accent text-white" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              OU
+            </button>
+          </div>
+        </div>
+      )}
 
-        <Row label="">
-          {isChoice ? (
-            <Select
-              value={rule.condition_value}
-              onChange={(v) => onChange({ condition_value: v })}
-              options={(sourceField.options || []).map((o) => ({
-                value: o.id,
-                label: o.label.fr || 'Option sans titre'
-              }))}
-            />
-          ) : (
-            <input
-              value={rule.condition_value}
-              onChange={(e) => onChange({ condition_value: e.target.value })}
-              placeholder="Valeur"
-              className="h-8 w-full rounded-md border border-border-strong bg-bg-surface px-2 text-sm focus:border-accent focus:outline-none"
-            />
-          )}
-        </Row>
+      {/* Liste des Conditions */}
+      <div className="space-y-2">
+        {rule.conditions.map((cond, condIdx) => {
+          const condField = allFields.find(f => f.id === cond.source_field_id);
+          const hasMultiple = rule.conditions.length > 1;
 
-        <Row label="Alors">
-          <Select
+          return (
+            <div
+              key={condIdx}
+              className="flex items-start gap-1 bg-bg-surface border border-border/80 rounded-lg p-2 relative group"
+            >
+              <div className="flex-1 space-y-1.5 min-w-0">
+                {/* Champ source */}
+                <div className="grid grid-cols-[65px_1fr] items-center gap-2">
+                  <span className="text-[10px] text-text-tertiary uppercase font-medium">Si</span>
+                  <select
+                    value={cond.source_field_id}
+                    onChange={(e) => handleConditionChange(condIdx, { source_field_id: e.target.value })}
+                    className="h-7 w-full rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none"
+                  >
+                    {sourceFields.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label.fr || 'Champ sans titre'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Opérateur */}
+                <div className="grid grid-cols-[65px_1fr] items-center gap-2">
+                  <span className="text-[10px] text-text-tertiary uppercase font-medium">Condition</span>
+                  <select
+                    value={cond.operator}
+                    onChange={(e) => handleConditionChange(condIdx, { operator: e.target.value as any })}
+                    className="h-7 w-full rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none"
+                  >
+                    {getOperatorsForFieldType(condField?.type || '').map((op) => (
+                      <option key={op.value} value={op.value}>
+                        {op.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Valeur */}
+                <div className="grid grid-cols-[65px_1fr] items-center gap-2">
+                  <span className="text-[10px] text-text-tertiary uppercase font-medium">Valeur</span>
+                  {isChoiceField(condField) ? (
+                    <select
+                      value={cond.value}
+                      onChange={(e) => handleConditionChange(condIdx, { value: e.target.value })}
+                      className="h-7 w-full rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none"
+                    >
+                      {(condField?.options || []).map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label.fr || 'Option sans titre'}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={cond.value}
+                      onChange={(e) => handleConditionChange(condIdx, { value: e.target.value })}
+                      placeholder="Valeur"
+                      className="h-7 w-full rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {hasMultiple && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCondition(condIdx)}
+                  className="p-1 text-text-tertiary hover:text-danger rounded transition hover:bg-bg-elevated"
+                  title="Supprimer cette condition"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={handleAddCondition}
+        className="text-[11px] text-accent hover:underline font-medium flex items-center gap-1"
+      >
+        <Plus className="h-3 w-3" />
+        Ajouter une condition
+      </button>
+
+      <div className="border-t border-border/60 my-2 pt-2 space-y-2 text-xs">
+        {/* Action Type */}
+        <div className="grid grid-cols-[65px_1fr] items-center gap-2">
+          <span className="text-[10px] text-text-tertiary uppercase font-semibold">Alors</span>
+          <select
             value={rule.action_type}
-            onChange={(v) => {
-              const newAction = v as LogicAction;
-              // Quand on change d'action, réinitialise la cible vers le premier candidat valide
+            onChange={(e) => {
+              const newAction = e.target.value as LogicAction;
               const newTargets = getTargetsForAction(newAction);
               onChange({
                 action_type: newAction,
                 target_field_id: newAction === 'end_form' ? undefined : newTargets[0]?.id
               });
             }}
-            options={availableActions.map((a) => ({ value: a.value, label: a.label }))}
-          />
-        </Row>
+            className="h-7 w-full rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none"
+          >
+            {availableActions.map((a) => (
+              <option key={a.value} value={a.value}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
+        {/* Cible */}
         {showTarget && (
-          <Row label="Cible">
+          <div className="grid grid-cols-[65px_1fr] items-center gap-2">
+            <span className="text-[10px] text-text-tertiary uppercase font-semibold">Cible</span>
             {targets.length === 0 ? (
               <span className="text-xs italic text-text-tertiary">
                 Aucune cible disponible
               </span>
             ) : (
-              <Select
+              <select
                 value={rule.target_field_id ?? ''}
-                onChange={(v) => onChange({ target_field_id: v })}
-                options={targets.map((f) => {
+                onChange={(e) => onChange({ target_field_id: e.target.value })}
+                className="h-7 w-full rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none"
+              >
+                <option value="">Choisir</option>
+                {targets.map((f) => {
                   const meta = FIELD_META[f.type];
-                  return {
-                    value: f.id,
-                    label: f.label.fr || `${meta.label} sans titre`
-                  };
+                  return (
+                    <option key={f.id} value={f.id}>
+                      {f.label.fr || `${meta.label} sans titre`}
+                    </option>
+                  );
                 })}
-                placeholder="Choisir"
-              />
+              </select>
             )}
-          </Row>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-      <span className="text-xs text-text-tertiary">{label}</span>
-      {children}
-    </div>
-  );
-}
-
-function Select({
-  value,
-  onChange,
-  options,
-  placeholder
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  placeholder?: string;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-8 w-full rounded-md border border-border-strong bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none"
-    >
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  );
-}

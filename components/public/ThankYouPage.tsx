@@ -58,6 +58,7 @@ export function ThankYouPage({ form, submissionId, scoreResult }: Props) {
               scoreResult={scoreResult}
               scoreLabel={form.theme.score_label}
               scoreDescription={form.theme.score_description}
+              scoreLevels={form.theme.score_levels}
             />
           </div>
         )}

@@ -34,6 +34,27 @@ export function FileUploadField({
   const urlValue = typeof value === 'string' ? value : null;
   const fileName = file ? file.name : (urlValue ? urlValue.split('/').pop() : null);
 
+  const getFileSize = (): number | null => {
+    if (file) {
+      return file.size;
+    }
+    if (typeof value === 'string' && value.startsWith('data:')) {
+      const base64Content = value.split(',')[1];
+      if (base64Content) {
+        return Math.round((base64Content.length * 3) / 4);
+      }
+    }
+    return null;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Octet';
+    const k = 1024;
+    const sizes = ['Octets', 'Ko', 'Mo', 'Go'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
   const inputId = `${type}-${Math.random().toString(36).slice(2, 8)}`;
 
   if (!enabled) {
@@ -132,6 +153,11 @@ export function FileUploadField({
           <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
           <span className="truncate text-sm font-medium text-text-primary">
             {fileName}
+            {getFileSize() !== null && (
+              <span className="ml-1.5 text-xs text-text-tertiary font-normal">
+                ({formatFileSize(getFileSize()!)})
+              </span>
+            )}
           </span>
         </div>
         <button

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { evaluateConditions } from '@/lib/logic-evaluation';
 import type { Form, Field } from '@/types';
 import type { ScoreResult } from '@/lib/scoring';
 import { FormHeader } from '@/components/builder/FormHeader';
@@ -37,6 +38,7 @@ export function PublicTypeformView({
   const fields = form.fields?.filter(f => visibleFields.has(f.id)) || [];
   const [currentIdx, setCurrentIdx] = useState(0);
   const [showIntro, setShowIntro] = useState(true);
+  const [history, setHistory] = useState<string[]>([]);
 
   const total = fields.length;
   const currentField = fields[currentIdx];
@@ -55,8 +57,8 @@ export function PublicTypeformView({
           <FormHeader
             theme={form.theme}
             selectedElement={null}
-            onSelectBanner={() => {}}
-            onSelectLogo={() => {}}
+            onSelectBanner={() => { }}
+            onSelectLogo={() => { }}
             preview={true}
           />
 
@@ -96,7 +98,22 @@ export function PublicTypeformView({
 
     const value = responses[currentField.id];
     return value !== undefined && value !== null &&
-           (typeof value !== 'string' || value.trim() !== '');
+      (typeof value !== 'string' || value.trim() !== '');
+  };
+
+  const handleBack = () => {
+    if (history.length > 0) {
+      const prevId = history[history.length - 1];
+      setHistory(prev => prev.slice(0, -1));
+      const prevIdx = fields.findIndex(f => f.id === prevId);
+      if (prevIdx !== -1) {
+        setCurrentIdx(prevIdx);
+      } else {
+        setCurrentIdx(i => Math.max(0, i - 1));
+      }
+    } else {
+      setCurrentIdx(i => Math.max(0, i - 1));
+    }
   };
 
   const handleNext = async () => {
@@ -104,6 +121,49 @@ export function PublicTypeformView({
     if (!validateCurrentField()) {
       alert('Ce champ est obligatoire');
       return;
+    }
+
+    // Trouver s'il y a une règle de type jump_to ou end_form qui concerne le champ courant
+    const fieldRules = (form.logic_rules ?? [])
+      .filter((r) => r.conditions && r.conditions.some(c => c.source_field_id === currentField.id))
+      .sort((a, b) => (a.rule_order || 0) - (b.rule_order || 0));
+
+    let triggeredAction: { action_type: string; target_field_id?: string } | null = null;
+
+    for (const rule of fieldRules) {
+      if (evaluateConditions(rule.conditions, rule.conditions_operator || 'AND', responses)) {
+        triggeredAction = rule;
+        break; // Première règle valide trouvée
+      }
+    }
+
+    if (triggeredAction) {
+      if (triggeredAction.action_type === 'end_form') {
+        // Soumission finale immédiate
+        const validation = validateRequiredFields();
+        if (!validation.isValid) {
+          alert('Veuillez remplir tous les champs obligatoires');
+          return;
+        }
+        await onSubmit();
+        return;
+      }
+
+      if (triggeredAction.action_type === 'jump_to' && triggeredAction.target_field_id) {
+        let targetIdx = fields.findIndex(f => f.id === triggeredAction!.target_field_id);
+        if (targetIdx === -1) {
+          // Si la cible n'est pas visible, on cherche le premier champ visible APRES la cible dans le formulaire original
+          const targetFieldInForm = form.fields?.find(f => f.id === triggeredAction!.target_field_id);
+          if (targetFieldInForm) {
+            targetIdx = fields.findIndex(f => f.field_order >= targetFieldInForm.field_order);
+          }
+        }
+        if (targetIdx !== -1) {
+          setHistory(prev => [...prev, currentField.id]);
+          setCurrentIdx(targetIdx);
+          return;
+        }
+      }
     }
 
     if (isLast) {
@@ -116,9 +176,69 @@ export function PublicTypeformView({
       await onSubmit();
     } else {
       // Question suivante
+      setHistory(prev => [...prev, currentField.id]);
       setCurrentIdx(i => Math.min(total - 1, i + 1));
     }
   };
+
+  const handleAutoAdvance = () => {
+    if (!currentField) return;
+
+    // Validation du champ courant
+    if (!validateCurrentField()) {
+      return;
+    }
+
+    // Trouver s'il y a une règle de type jump_to ou end_form qui concerne le champ courant
+    const fieldRules = (form.logic_rules ?? [])
+      .filter((r) => r.conditions && r.conditions.some(c => c.source_field_id === currentField.id))
+      .sort((a, b) => (a.rule_order || 0) - (b.rule_order || 0));
+
+    let triggeredAction: { action_type: string; target_field_id?: string } | null = null;
+
+    for (const rule of fieldRules) {
+      if (evaluateConditions(rule.conditions, rule.conditions_operator || 'AND', responses)) {
+        triggeredAction = rule;
+        break; // Première règle valide trouvée
+      }
+    }
+
+    if (triggeredAction) {
+      if (triggeredAction.action_type === 'end_form') {
+        // En auto-advance, on ne soumet pas automatiquement le formulaire pour laisser l'utilisateur cliquer sur Envoyer
+        return;
+      }
+
+      if (triggeredAction.action_type === 'jump_to' && triggeredAction.target_field_id) {
+        let targetIdx = fields.findIndex(f => f.id === triggeredAction!.target_field_id);
+        if (targetIdx === -1) {
+          const targetFieldInForm = form.fields?.find(f => f.id === triggeredAction!.target_field_id);
+          if (targetFieldInForm) {
+            targetIdx = fields.findIndex(f => f.field_order >= targetFieldInForm.field_order);
+          }
+        }
+        if (targetIdx !== -1) {
+          setHistory(prev => [...prev, currentField.id]);
+          setCurrentIdx(targetIdx);
+          return;
+        }
+      }
+    }
+
+    // Si pas d'action spécifique, on avance à la question suivante seulement s'il y en a une
+    const isLastField = currentIdx === fields.length - 1;
+    if (!isLastField) {
+      setHistory(prev => [...prev, currentField.id]);
+      setCurrentIdx(i => i + 1);
+    }
+  };
+
+  const handleNextRef = useRef(handleNext);
+  const handleAutoAdvanceRef = useRef(handleAutoAdvance);
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+    handleAutoAdvanceRef.current = handleAutoAdvance;
+  });
 
   // Navigation par clavier
   useEffect(() => {
@@ -192,9 +312,9 @@ export function PublicTypeformView({
               {/* Champ de saisie */}
               <div className="mb-8">
                 {currentField.type === 'section_break' ||
-                 currentField.type === 'statement' ||
-                 currentField.type === 'image' ||
-                 currentField.type === 'video' ? (
+                  currentField.type === 'statement' ||
+                  currentField.type === 'image' ||
+                  currentField.type === 'video' ? (
                   <PublicFieldCard
                     field={currentField}
                     form={form}
@@ -208,7 +328,14 @@ export function PublicTypeformView({
                     preview={false}
                     mobile={false}
                     value={responses[currentField.id]}
-                    onValueChange={(val) => updateResponse(currentField.id, val)}
+                    onValueChange={(val) => {
+                      updateResponse(currentField.id, val);
+                      if (currentField.type === 'single_choice' && val !== '__other__') {
+                        setTimeout(() => {
+                          handleAutoAdvanceRef.current();
+                        }, 300);
+                      }
+                    }}
                   />
                 )}
               </div>
@@ -224,31 +351,42 @@ export function PublicTypeformView({
                 </div>
               )}
 
-              {/* Bouton suivant */}
-              <button
-                onClick={handleNext}
-                disabled={isSubmitting}
-                className={cn(
-                  'inline-flex items-center gap-2 rounded-xl px-6 py-3 text-lg font-medium transition',
-                  'bg-accent text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'
-                )}
-              >
-                {isLast ? (
-                  isSubmitting ? (
-                    'Envoi...'
+              {/* Boutons de navigation */}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  disabled={currentIdx === 0 && history.length === 0}
+                  className="inline-flex items-center gap-2 rounded-xl border border-border bg-bg-surface px-6 py-3 text-lg font-medium transition hover:border-border-strong disabled:opacity-50 disabled:cursor-not-allowed text-text-primary"
+                >
+                  Retour
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  disabled={isSubmitting}
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-xl px-6 py-3 text-lg font-medium transition',
+                    'bg-accent text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'
+                  )}
+                >
+                  {isLast ? (
+                    isSubmitting ? (
+                      'Envoi...'
+                    ) : (
+                      <>
+                        <Check className="h-5 w-5" />
+                        Envoyer
+                      </>
+                    )
                   ) : (
                     <>
-                      <Check className="h-5 w-5" />
-                      Envoyer
+                      Suivant
+                      <ArrowRight className="h-5 w-5" />
                     </>
-                  )
-                ) : (
-                  <>
-                    Suivant
-                    <ArrowRight className="h-5 w-5" />
-                  </>
-                )}
-              </button>
+                  )}
+                </button>
+              </div>
 
               <p className="text-sm text-text-tertiary mt-4">
                 Appuyez sur Entrée ↵

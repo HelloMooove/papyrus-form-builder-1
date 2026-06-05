@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,19 +17,25 @@ import {
 import * as Icons from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatCount } from '@/lib/utils';
+import { Modal } from '@/components/ui/Modal';
+import { formatCount, cn } from '@/lib/utils';
 import { useForms } from '@/lib/store/use-forms';
 import { createForm } from '@/lib/store';
 import { getWorkspaces } from '@/lib/store/local-workspaces';
 import { cloneTemplate, listTemplatesByScope } from '@/lib/store/templates';
 import { FAVORITES_EVENT, listFavorites } from '@/lib/store/favorites';
 import { toast } from '@/components/ui/Toast';
-import type { Form } from '@/types';
+import type { Form, Workspace } from '@/types';
 
 export default function DashboardHome() {
   const forms = useForms();
   const router = useRouter();
+  const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [workspacesMap, setWorkspacesMap] = useState<Record<string, string>>({});
+  const [workspacesList, setWorkspacesList] = useState<Workspace[]>([]);
+  const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
 
   // Synchro favoris
   useEffect(() => {
@@ -39,6 +46,52 @@ export default function DashboardHome() {
     window.addEventListener(FAVORITES_EVENT, refresh);
     return () => window.removeEventListener(FAVORITES_EVENT, refresh);
   }, []);
+
+  // Charger les espaces de travail pour afficher leurs noms sur les cartes
+  useEffect(() => {
+    const loadWorkspacesData = async () => {
+      if (isLocal) {
+        try {
+          const list = getWorkspaces();
+          setWorkspacesList(list);
+          const map: Record<string, string> = {};
+          list.forEach((w) => {
+            map[w.id] = w.name;
+          });
+          setWorkspacesMap(map);
+        } catch (err) {
+          console.error('Failed to load local workspaces:', err);
+        }
+      } else {
+        try {
+          const res = await fetch('/api/teams');
+          if (!res.ok) throw new Error('Failed to fetch teams');
+          const list = await res.json();
+          setWorkspacesList(list.map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            scope: (t.name === 'Mon espace' ? 'personal' : 'team'),
+            is_deletable: t.name !== 'Mon espace',
+            created_by: '',
+            created_at: ''
+          })));
+          const map: Record<string, string> = {};
+          list.forEach((t: any) => {
+            map[t.id] = t.name;
+          });
+          setWorkspacesMap(map);
+        } catch (err) {
+          console.error('Failed to load Supabase workspaces:', err);
+        }
+      }
+    };
+    loadWorkspacesData();
+  }, [isLocal]);
+
+  const getWorkspaceName = (form: Form) => {
+    const targetId = isLocal ? form.workspace_id : form.team_id;
+    return targetId ? workspacesMap[targetId] : null;
+  };
 
   // Données dérivées
   const totalForms = forms.filter((f) => !f.is_template).length;
@@ -62,25 +115,26 @@ export default function DashboardHome() {
   // Réponses du mois — placeholder en attendant la collecte
   const responsesThisMonth = '—';
 
-  async function handleNew() {
+  function handleNew() {
+    if (workspacesList.length > 0) {
+      setSelectedWorkspaceId(workspacesList[0].id);
+      setIsWorkspaceModalOpen(true);
+    } else {
+      handleConfirmCreate(undefined);
+    }
+  }
+
+  async function handleConfirmCreate(wsId?: string) {
+    setIsWorkspaceModalOpen(false);
+    const targetWsId = wsId || selectedWorkspaceId;
     try {
-      // S'assurer que le workspace personnel existe
-      const { initDefaultWorkspace } = await import('@/lib/store/local-workspaces');
-      initDefaultWorkspace('local-user');
-
-      // Récupérer le workspace personnel pour associer le formulaire
-      const workspaces = getWorkspaces();
-      const personalWorkspace = workspaces.find(w => w.scope === 'personal');
-
-      if (!personalWorkspace) {
-        console.error('Aucun workspace personnel trouvé');
-        // Créer le formulaire sans workspace en fallback
-        const f = await createForm('Nouveau formulaire');
-        router.push(`/forms/${f.id}/edit`);
-        return;
+      if (!isLocal) {
+        // En mode Supabase, mettre à jour le cookie de l'équipe active
+        if (targetWsId) {
+          document.cookie = `papyrus:active-team-id=${targetWsId}; path=/; max-age=31536000; SameSite=Lax`;
+        }
       }
-
-      const f = await createForm('Nouveau formulaire', personalWorkspace.id);
+      const f = await createForm('Nouveau formulaire', targetWsId);
       router.push(`/forms/${f.id}/edit`);
     } catch (error) {
       console.error('Failed to create form:', error);
@@ -166,7 +220,7 @@ export default function DashboardHome() {
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {recentForms.map((f) => (
-              <FormCard key={f.id} form={f} />
+              <FormCard key={f.id} form={f} workspaceName={getWorkspaceName(f)} />
             ))}
           </div>
         )}
@@ -180,23 +234,85 @@ export default function DashboardHome() {
             icon={<Pencil className="h-4 w-4 text-text-secondary" />}
           />
           <div className="space-y-1.5">
-            {drafts.slice(0, 5).map((f) => (
-              <Link
-                key={f.id}
-                href={`/forms/${f.id}/edit`}
-                className="flex items-center justify-between rounded-md border border-border bg-bg-surface px-4 py-2.5 transition hover:border-border-strong hover:bg-bg-elevated"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Pencil className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
-                  <span className="truncate text-sm text-text-primary">{f.title}</span>
-                </div>
-                <span className="papyrus-meta shrink-0 text-xs">
-                  Édité {new Date(f.updated_at).toLocaleDateString('fr-FR')}
-                </span>
-              </Link>
-            ))}
+            {drafts.slice(0, 5).map((f) => {
+              const wsName = getWorkspaceName(f);
+              return (
+                <Link
+                  key={f.id}
+                  href={`/forms/${f.id}/edit`}
+                  className="flex items-center justify-between rounded-md border border-border bg-bg-surface px-4 py-2.5 transition hover:border-border-strong hover:bg-bg-elevated"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Pencil className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+                    <span className="truncate text-sm text-text-primary">{f.title}</span>
+                  </div>
+                  <span className="papyrus-meta shrink-0 text-xs">
+                    Édité {new Date(f.updated_at).toLocaleDateString('fr-FR')}
+                    {wsName ? ` · ${wsName}` : ''}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         </section>
+      )}
+
+      {/* Modal de choix du workspace pour la création de formulaire */}
+      {isWorkspaceModalOpen && typeof window !== 'undefined' && createPortal(
+        <Modal
+          isOpen={isWorkspaceModalOpen}
+          onClose={() => setIsWorkspaceModalOpen(false)}
+          title="Créer un nouveau formulaire"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary font-body">
+              Dans quel espace de travail souhaitez-vous créer ce formulaire ?
+            </p>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {workspacesList.map((ws) => {
+                const isSelected = selectedWorkspaceId === ws.id;
+                return (
+                  <button
+                    key={ws.id}
+                    onClick={() => setSelectedWorkspaceId(ws.id)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg border p-3.5 text-left transition text-sm",
+                      isSelected
+                        ? "border-accent bg-accent/5 text-text-primary font-semibold"
+                        : "border-border hover:border-border-strong hover:bg-bg-elevated text-text-secondary hover:text-text-primary"
+                    )}
+                  >
+                    <span className="font-medium font-body">{ws.name}</span>
+                    <div className={cn(
+                      "h-4.5 w-4.5 rounded-full border flex items-center justify-center shrink-0",
+                      isSelected ? "border-accent bg-accent text-white" : "border-border bg-bg-surface"
+                    )}>
+                      {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsWorkspaceModalOpen(false)}
+              >
+                Annuler
+              </Button>
+              <Button
+                variant="cta"
+                size="sm"
+                onClick={() => handleConfirmCreate()}
+              >
+                Confirmer
+              </Button>
+            </div>
+          </div>
+        </Modal>,
+        document.body
       )}
     </div>
   );
@@ -257,7 +373,7 @@ function StatCard({
   );
 }
 
-function FormCard({ form }: { form: Form }) {
+function FormCard({ form, workspaceName }: { form: Form; workspaceName?: string | null }) {
   return (
     <Link
       href={`/forms/${form.id}`}
@@ -267,9 +383,20 @@ function FormCard({ form }: { form: Form }) {
         <div className="font-display text-lg">{form.title}</div>
         <StatusBadge status={form.status} />
       </div>
-      <div className="papyrus-meta mt-1 text-xs">
-        Mis à jour {new Date(form.updated_at).toLocaleDateString('fr-FR')} ·{' '}
-        {form.fields?.length ?? 0} champ{(form.fields?.length ?? 0) > 1 ? 's' : ''}
+      <div className="papyrus-meta mt-1 text-xs space-y-1">
+        <div>
+          Mis à jour {new Date(form.updated_at).toLocaleDateString('fr-FR')}
+          {workspaceName ? ` · ${workspaceName}` : ''} ·{' '}
+          {form.fields?.length ?? 0} champ{(form.fields?.length ?? 0) > 1 ? 's' : ''}
+        </div>
+        {form.closes_at && (
+          <div className="flex items-center gap-1 font-medium text-orange-500">
+            <span className="h-1 w-1 rounded-full bg-orange-500" />
+            {new Date(form.closes_at) > new Date()
+              ? `Ferme le ${new Date(form.closes_at).toLocaleDateString('fr-FR')} à ${new Date(form.closes_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}`
+              : `Fermé`}
+          </div>
+        )}
       </div>
     </Link>
   );

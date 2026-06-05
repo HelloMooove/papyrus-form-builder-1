@@ -4,20 +4,22 @@ import { CheckCircle, TrendingUp } from 'lucide-react';
 import type { ScoreResult } from '@/lib/scoring';
 import { getScoreMessage } from '@/lib/scoring';
 import { cn } from '@/lib/utils';
+import type { ScoreLevel } from '@/types';
 
 interface Props {
   scoreResult: ScoreResult;
   className?: string;
   scoreLabel?: string;
   scoreDescription?: string;
+  scoreLevels?: ScoreLevel[];
 }
 
 /**
  * Affiche le résultat final du score de maturité au répondant.
  * Utilisé uniquement si le créateur a activé l'affichage du score.
  */
-export function ScoreDisplay({ scoreResult, className, scoreLabel, scoreDescription }: Props) {
-  const { title, description, color } = getScoreMessage(scoreResult.percentage);
+export function ScoreDisplay({ scoreResult, className, scoreLabel, scoreDescription, scoreLevels }: Props) {
+  const { title, description, color } = getScoreMessage(scoreResult.percentage, scoreLevels);
 
   return (
     <div className={cn('rounded-2xl border border-border bg-bg-surface p-6', className)}>

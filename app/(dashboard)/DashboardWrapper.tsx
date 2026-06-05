@@ -33,7 +33,7 @@ export function DashboardWrapper({
       />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="relative flex-1 overflow-y-auto px-8 py-6">{children}</main>
+        <main className="relative flex-1 overflow-y-auto" style={{ padding: 'var(--layout-padding)' }}>{children}</main>
       </div>
     </div>
   );

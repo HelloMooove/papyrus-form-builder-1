@@ -54,8 +54,13 @@
   --sidebar-text-sm: clamp(11px, 0.85vw, 13px);
   --sidebar-text-base: clamp(12px, 0.9vw, 14px);
   --sidebar-item-height: clamp(28px, 2.2vw, 36px);
-  --sidebar-logo-size: clamp(28px, 2.2vw, 36px);
+  --sidebar-logo-size: 48px;
   --sidebar-avatar-size: clamp(26px, 2vw, 32px);
+
+  /* Panels de l'éditeur & Spacings fluides */
+  --palette-width: clamp(240px, 18vw, 280px);
+  --settings-width: clamp(280px, 20vw, 340px);
+  --layout-padding: clamp(16px, 3.5vw, 32px);
 }
 
 [data-theme='dark'] {

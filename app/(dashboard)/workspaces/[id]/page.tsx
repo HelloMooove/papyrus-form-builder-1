@@ -26,6 +26,31 @@ import type { Form, Workspace } from '@/types';
 
 type FilterStatus = 'all' | 'published' | 'draft' | 'closed';
 
+const copyToClipboard = async (text: string) => {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch (err) {
+    console.warn('Navigator clipboard failed, trying fallback', err);
+  }
+  
+  // Fallback
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+  } catch (err) {
+    console.error('Fallback copy failed', err);
+  }
+  document.body.removeChild(textarea);
+};
+
 export default function WorkspacePage() {
   const params = useParams();
   const router = useRouter();
@@ -269,10 +294,16 @@ export default function WorkspacePage() {
 
     window.addEventListener('papyrus:forms-changed', handleFormsChanged);
     window.addEventListener('papyrus:workspaces-changed', handleFormsChanged);
+    window.addEventListener('papyrus:form-created', handleFormsChanged);
+    window.addEventListener('papyrus:form-updated', handleFormsChanged);
+    window.addEventListener('papyrus:form-deleted', handleFormsChanged);
 
     return () => {
       window.removeEventListener('papyrus:forms-changed', handleFormsChanged);
       window.removeEventListener('papyrus:workspaces-changed', handleFormsChanged);
+      window.removeEventListener('papyrus:form-created', handleFormsChanged);
+      window.removeEventListener('papyrus:form-updated', handleFormsChanged);
+      window.removeEventListener('papyrus:form-deleted', handleFormsChanged);
     };
   }, [workspaceId, router]);
 
@@ -481,7 +512,7 @@ export default function WorkspacePage() {
                   size="sm"
                   onClick={() => {
                     const url = `${window?.location?.origin || ''}/workspaces/${workspace.id}`;
-                    navigator.clipboard.writeText(url);
+                    copyToClipboard(url);
                     toast.success('Lien copié !');
                   }}
                 >
@@ -657,6 +688,14 @@ function FormCard({ form }: { form: Form }) {
         <div>
           Mis à jour {new Date(form.updated_at).toLocaleDateString('fr-FR')}
         </div>
+        {form.closes_at && (
+          <div className="flex items-center gap-1 font-medium text-orange-500">
+            <span className="h-1 w-1 rounded-full bg-orange-500" />
+            {new Date(form.closes_at) > new Date()
+              ? `Fermeture le ${new Date(form.closes_at).toLocaleDateString('fr-FR')} à ${new Date(form.closes_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}`
+              : `Fermé le ${new Date(form.closes_at).toLocaleDateString('fr-FR')}`}
+          </div>
+        )}
         <div>
           {form.fields?.length ?? 0} champ{(form.fields?.length ?? 0) > 1 ? 's' : ''}
           {form.status === 'published' && ' · Ouvert aux réponses'}

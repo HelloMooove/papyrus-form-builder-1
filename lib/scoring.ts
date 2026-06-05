@@ -1,6 +1,6 @@
 // lib/scoring.ts — Logique de calcul des scores de maturité
 
-import type { Form, Field, FieldOption } from '@/types';
+import type { Form, Field, FieldOption, ScoreLevel } from '@/types';
 
 /** Structure représentant les réponses d'un répondant */
 export interface FormResponses {
@@ -202,33 +202,56 @@ function calculateNpsScore(response: number): { score: number; maxScore: number 
   return { score: nps, maxScore: 10 };
 }
 
+export const DEFAULT_SCORE_LEVELS: ScoreLevel[] = [
+  {
+    minPercent: 80,
+    title: 'Excellent !',
+    description: 'Vous démontrez une très bonne maturité dans ce domaine.',
+    color: 'green'
+  },
+  {
+    minPercent: 60,
+    title: 'Bien !',
+    description: 'Vous avez une bonne base, avec quelques axes d\'amélioration.',
+    color: 'blue'
+  },
+  {
+    minPercent: 40,
+    title: 'En progression',
+    description: 'Vous êtes sur la bonne voie, continuez vos efforts.',
+    color: 'orange'
+  },
+  {
+    minPercent: 0,
+    title: 'À développer',
+    description: 'Il y a de belles opportunités d\'amélioration à explorer.',
+    color: 'red'
+  }
+];
+
+const COLOR_CLASSES: Record<string, string> = {
+  green: 'text-green-600',
+  blue: 'text-blue-600',
+  orange: 'text-orange-600',
+  red: 'text-red-600'
+};
+
 /**
  * Génère un message contextuel basé sur le pourcentage de score.
  */
-export function getScoreMessage(percentage: number): { title: string; description: string; color: string } {
-  if (percentage >= 80) {
-    return {
-      title: 'Excellent !',
-      description: 'Vous démontrez une très bonne maturité dans ce domaine.',
-      color: 'text-green-600'
-    };
-  } else if (percentage >= 60) {
-    return {
-      title: 'Bien !',
-      description: 'Vous avez une bonne base, avec quelques axes d\'amélioration.',
-      color: 'text-blue-600'
-    };
-  } else if (percentage >= 40) {
-    return {
-      title: 'En progression',
-      description: 'Vous êtes sur la bonne voie, continuez vos efforts.',
-      color: 'text-orange-600'
-    };
-  } else {
-    return {
-      title: 'À développer',
-      description: 'Il y a de belles opportunités d\'amélioration à explorer.',
-      color: 'text-red-600'
-    };
-  }
+export function getScoreMessage(
+  percentage: number,
+  levels?: ScoreLevel[]
+): { title: string; description: string; color: string } {
+  const activeLevels = (levels && levels.length > 0) ? levels : DEFAULT_SCORE_LEVELS;
+  const sorted = [...activeLevels].sort((a, b) => b.minPercent - a.minPercent);
+
+  // Trouver le premier niveau dont le pourcentage est inférieur ou égal
+  const matched = sorted.find(level => percentage >= level.minPercent) || sorted[sorted.length - 1];
+
+  return {
+    title: matched.title,
+    description: matched.description,
+    color: COLOR_CLASSES[matched.color] || 'text-text-secondary'
+  };
 }

@@ -6,6 +6,40 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
  * en utilisant le client d'administration côté serveur pour contourner les contraintes RLS de teams.
  */
 
+export async function GET() {
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    }
+
+    const adminSupabase = createAdminClient();
+
+    // Charger tous les workspaces de l'utilisateur via le client Admin
+    const { data: memberships } = await adminSupabase
+      .from('team_members')
+      .select('team_id, role, teams(id, name, plan)')
+      .eq('user_id', user.id);
+
+    const membershipsList = memberships || [];
+
+    // Extraire les teams valides
+    const teams = membershipsList
+      .map((m) => {
+        const t = m.teams as unknown;
+        return Array.isArray(t) ? t[0] : (t as { id: string; name: string; plan: string } | null);
+      })
+      .filter((t): t is { id: string; name: string; plan: string } => !!t && !!t.id);
+
+    return NextResponse.json(teams);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('Error fetching teams:', err);
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
+  }
+}
+
 export async function PATCH(request: Request) {
   try {
     const supabase = createClient();

@@ -272,7 +272,7 @@ async function syncRelatedEntities<T extends { id: string }>(
       .from(tableName)
       .delete()
       .eq('form_id', formId)
-      .not('id', 'in', validIds);
+      .not('id', 'in', `(${validIds.join(',')})`);
 
     if (deleteError) throw deleteError;
   }
@@ -361,6 +361,7 @@ export async function updateForm(id: string, patch: Partial<Form>): Promise<Form
   };
 
   notifyFormUpdated(id, updatedForm);
+  notifyFormsChanged();
   return updatedForm;
 }
 
@@ -375,6 +376,7 @@ export async function deleteForm(id: string): Promise<void> {
   if (error) throw error;
 
   notifyFormDeleted(id);
+  notifyFormsChanged();
 }
 
 /** Ajoute un champ à un formulaire et renvoie le formulaire à jour. */
@@ -422,7 +424,7 @@ export async function addField(
                 { id: uuid(), label: emptyMultilingual('Critère 3') }
               ]
             : undefined,
-        required: false,
+        required: form.require_all_by_default ?? false,
         field_order: fields.length,
         validation: type === 'matrix' ? { matrix_mode: 'single' } : {}
       };
@@ -718,7 +720,7 @@ export async function listLogicRules(formId: string, sourceFieldId?: string): Pr
   if (!form) return [];
 
   const rules = form.logic_rules ?? [];
-  return sourceFieldId ? rules.filter((r) => r.source_field_id === sourceFieldId) : rules;
+  return sourceFieldId ? rules.filter((r) => r.conditions.some(c => c.source_field_id === sourceFieldId)) : rules;
 }
 
 export async function addLogicRule(
@@ -858,4 +860,150 @@ export async function deleteTeamMember(teamId: string, userId: string): Promise<
     const err = await res.json();
     throw new Error(err.error || 'Erreur lors de la suppression du membre');
   }
+}
+
+/**
+ * Importe un formulaire JSON dans Supabase en remappant tous les identifiants
+ */
+export async function importForm(
+  formJson: Partial<Form> & { fields?: Field[]; logic_rules?: LogicRule[] },
+  customTeamId?: string
+): Promise<Form> {
+  const supabase = createClient();
+  const user = await getCurrentUser();
+  const now = new Date().toISOString();
+  const newFormId = uuid();
+  
+  const teamId = customTeamId || getActiveTeamId() || user.id;
+  
+  // 1. Remap fields and options/rows
+  const fieldIdMap: Record<string, string> = {};
+  const optionIdMap: Record<string, string> = {};
+  
+  const mappedFields: Field[] = (formJson.fields || []).map((field, index) => {
+    const newFieldId = uuid();
+    fieldIdMap[field.id] = newFieldId;
+    
+    const mappedOptions = (field.options || []).map(opt => {
+      const newOptId = uuid();
+      optionIdMap[opt.id] = newOptId;
+      return {
+        ...opt,
+        id: newOptId
+      };
+    });
+    
+    const mappedRows = field.rows ? field.rows.map(row => {
+      const newRowId = uuid();
+      optionIdMap[row.id] = newRowId;
+      return {
+        ...row,
+        id: newRowId
+      };
+    }) : undefined;
+    
+    return {
+      ...field,
+      id: newFieldId,
+      form_id: newFormId,
+      options: mappedOptions,
+      rows: mappedRows,
+      field_order: index
+    };
+  });
+  
+  // 2. Remap logic rules
+  const mappedRules: LogicRule[] = (formJson.logic_rules || []).map(rule => {
+    const newRuleId = uuid();
+    
+    const mappedConditions = (rule.conditions || []).map(cond => {
+      let newConditionValue = cond.value;
+      if (optionIdMap[cond.value]) {
+        newConditionValue = optionIdMap[cond.value];
+      }
+      return {
+        source_field_id: fieldIdMap[cond.source_field_id] || cond.source_field_id,
+        operator: cond.operator,
+        value: newConditionValue
+      };
+    });
+    
+    return {
+      ...rule,
+      id: newRuleId,
+      form_id: newFormId,
+      conditions: mappedConditions,
+      conditions_operator: rule.conditions_operator || 'AND',
+      action_type: rule.action_type,
+      target_field_id: rule.target_field_id ? (fieldIdMap[rule.target_field_id] || rule.target_field_id) : null,
+      rule_order: rule.rule_order
+    } as any;
+  });
+  
+  // 3. Insert form
+  const formData = {
+    id: newFormId,
+    team_id: teamId,
+    created_by: user.id,
+    title: formJson.title || 'Formulaire importé',
+    slug: uniqueSlug(formJson.title || 'Formulaire importé'),
+    description: formJson.description || '',
+    display_mode: formJson.display_mode || 'scroll',
+    status: 'draft' as const,
+    is_template: false,
+    template_origin_id: null,
+    theme: formJson.theme || {
+      bg: '#F7F0DC',
+      accent: '#052139',
+      font: 'Aktiv Grotesk',
+      banner_url: null,
+      dark_mode: false
+    },
+    access_type: formJson.access_type || 'public',
+    access_password: formJson.access_password || null,
+    languages: formJson.languages || ['fr'],
+    default_language: formJson.default_language || 'fr',
+    published_at: null,
+    closes_at: null,
+    created_at: now,
+    updated_at: now
+  };
+  
+  const { data: form, error: formError } = await supabase
+    .from('forms')
+    .insert(formData)
+    .select()
+    .single();
+    
+  if (formError) throw formError;
+  
+  // 4. Insert fields
+  if (mappedFields.length > 0) {
+    const { error: fieldsError } = await supabase
+      .from('fields')
+      .insert(mappedFields);
+    if (fieldsError) {
+      await supabase.from('forms').delete().eq('id', newFormId);
+      throw fieldsError;
+    }
+  }
+  
+  // 5. Insert rules
+  if (mappedRules.length > 0) {
+    const { error: rulesError } = await supabase
+      .from('logic_rules')
+      .insert(mappedRules);
+    if (rulesError) {
+      await supabase.from('fields').delete().eq('form_id', newFormId);
+      await supabase.from('forms').delete().eq('id', newFormId);
+      throw rulesError;
+    }
+  }
+  
+  const importedForm = await getForm(newFormId);
+  notifyFormsChanged();
+  notifyFormCreated();
+  
+  if (!importedForm) throw new Error('Failed to retrieve imported form');
+  return importedForm;
 }

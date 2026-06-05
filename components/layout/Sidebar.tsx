@@ -19,7 +19,13 @@ import {
   X,
   Check,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Edit2,
+  Copy,
+  Trash2,
+  Link2,
+  FolderInput,
+  Share2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
@@ -36,7 +42,7 @@ import { Modal } from '@/components/ui/Modal';
 import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
-import { createForm, createTeam, updateTeamName } from '@/lib/store';
+import { createForm, createTeam, updateTeamName, cloneForm, deleteForm, updateForm } from '@/lib/store';
 
 interface Props {
   teamName?: string;
@@ -74,6 +80,10 @@ export function Sidebar({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
+  // Renommage formulaire inline
+  const [editingFormId, setEditingFormId] = useState<string | null>(null);
+  const [editFormTitle, setEditFormTitle] = useState('');
+
   // Dropdown menu d'options de workspace actif
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [workspaceDropdownPosition, setWorkspaceDropdownPosition] = useState<{ top: number; left: number } | null>(null);
@@ -96,6 +106,7 @@ export function Sidebar({
   // Menu contextuel formulaire actif
   const [activeFormMenuId, setActiveFormMenuId] = useState<string | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
+  const [movingFormId, setMovingFormId] = useState<string | null>(null);
   const formMenuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Liste de tous les formulaires Supabase pour filtrage par équipe en mode non-local
@@ -126,6 +137,107 @@ export function Sidebar({
       setOpenAccordions({ [list[0].id]: true });
     }
   }
+
+  // Helper pour trouver un formulaire par son ID
+  const findFormById = (formId: string): Form | null => {
+    if (isLocal) {
+      for (const ws of workspaces) {
+        const forms = getWorkspaceForms(ws.id);
+        const f = forms.find(form => form.id === formId);
+        if (f) return f;
+      }
+      return null;
+    } else {
+      return allForms.find(f => f.id === formId) || null;
+    }
+  };
+
+  const handleRenameFormSubmit = async (formId: string) => {
+    if (!editFormTitle.trim()) {
+      setEditingFormId(null);
+      return;
+    }
+    try {
+      await updateForm(formId, { title: editFormTitle.trim() });
+      toast.success('Formulaire renommé !');
+    } catch (err) {
+      console.error('Error renaming form:', err);
+      toast.error('Erreur lors du renommage');
+    } finally {
+      setEditingFormId(null);
+    }
+  };
+
+  const handleDuplicateForm = async (formId: string) => {
+    try {
+      const cloned = await cloneForm(formId);
+      if (cloned) {
+        toast.success('Formulaire dupliqué !');
+      } else {
+        toast.error('Erreur lors de la duplication');
+      }
+    } catch (err) {
+      console.error('Error duplicating form:', err);
+      toast.error('Erreur lors de la duplication');
+    }
+  };
+
+  const handleDeleteFormClick = async (formId: string) => {
+    const f = findFormById(formId);
+    const formTitle = f?.title || 'ce formulaire';
+
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement le formulaire « ${formTitle} » ? Cette action est irréversible.`)) {
+      try {
+        await deleteForm(formId);
+        toast.success('Formulaire supprimé !');
+        if (pathname === `/forms/${formId}` || pathname === `/forms/${formId}/edit`) {
+          router.push('/dashboard');
+        }
+      } catch (err) {
+        console.error('Error deleting form:', err);
+        toast.error('Erreur lors de la suppression');
+      }
+    }
+  };
+
+  const handleMoveForm = async (formId: string, targetWorkspaceId: string) => {
+    try {
+      const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === 'true';
+      const patch = isLocal ? { workspace_id: targetWorkspaceId } : { team_id: targetWorkspaceId };
+      await updateForm(formId, patch);
+      toast.success('Formulaire déplacé avec succès !');
+      setMovingFormId(null);
+    } catch (err) {
+      console.error('Error moving form:', err);
+      toast.error('Erreur lors du déplacement du formulaire');
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+    } catch (err) {
+      console.warn('Navigator clipboard failed, trying fallback', err);
+    }
+    
+    // Fallback
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+    } catch (err) {
+      console.error('Fallback copy failed', err);
+    }
+    document.body.removeChild(textarea);
+  };
+
 
   // Charger les espaces et initialiser le défaut au montage
   useEffect(() => {
@@ -192,9 +304,13 @@ export function Sidebar({
     };
     window.addEventListener('papyrus:forms-changed', handleFormsChanged);
     window.addEventListener('papyrus:form-created', handleFormsChanged);
+    window.addEventListener('papyrus:form-updated', handleFormsChanged);
+    window.addEventListener('papyrus:form-deleted', handleFormsChanged);
     return () => {
       window.removeEventListener('papyrus:forms-changed', handleFormsChanged);
       window.removeEventListener('papyrus:form-created', handleFormsChanged);
+      window.removeEventListener('papyrus:form-updated', handleFormsChanged);
+      window.removeEventListener('papyrus:form-deleted', handleFormsChanged);
     };
   }, [isLocal]);
 
@@ -534,58 +650,73 @@ export function Sidebar({
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition rounded"
           >
-            Edit
+            <Edit2 className="h-4 w-4 text-text-tertiary" />
+            Modifier
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onClose();
-              // TODO: Implémenter rename
+              const f = findFormById(formId);
+              if (f) {
+                setEditingFormId(formId);
+                setEditFormTitle(f.title);
+              }
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition rounded"
           >
-            Rename
+            <Edit2 className="h-4 w-4 text-text-tertiary" />
+            Renommer
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onClose();
-              // TODO: Implémenter copy link
+              const f = findFormById(formId);
+              if (f) {
+                const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/f/${f.slug}`;
+                copyToClipboard(url);
+                toast.success('Lien de partage copié !');
+              }
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition rounded"
           >
-            Copy link to share
+            <Share2 className="h-4 w-4 text-text-tertiary" />
+            Copier le lien de partage
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onClose();
-              // TODO: Implémenter move to workspace
+              setMovingFormId(formId);
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition rounded"
           >
-            Move to workspace
+            <FolderInput className="h-4 w-4 text-text-tertiary" />
+            Changer d'espace de travail
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onClose();
-              // TODO: Implémenter duplicate
+              handleDuplicateForm(formId);
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition rounded"
           >
-            Duplicate
+            <Copy className="h-4 w-4 text-text-tertiary" />
+            Dupliquer
           </button>
           <div className="my-2 border-t border-border"></div>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onClose();
-              // TODO: Implémenter delete
+              handleDeleteFormClick(formId);
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger hover:bg-danger/5 transition font-semibold rounded"
           >
-            Delete
+            <Trash2 className="h-4 w-4" />
+            Supprimer
           </button>
         </div>
       </>,
@@ -675,13 +806,13 @@ export function Sidebar({
           onClick={() => router.push('/dashboard')}
           className="flex items-center gap-2 text-left focus:outline-none"
         >
-          {/* Carré P arrondi */}
-          <div
+          {/* Logo Papyrus */}
+          <img
+            src="/papyrus-logo.png"
+            alt="Papyrus"
             style={{ width: 'var(--sidebar-logo-size)', height: 'var(--sidebar-logo-size)' }}
-            className="flex items-center justify-center rounded-xl bg-mooove-navy text-white font-bold text-sm xl:text-base shrink-0"
-          >
-            P
-          </div>
+            className="rounded-xl shrink-0 object-contain"
+          />
           {/* Textes */}
           <div className="flex flex-col">
             <span className={cn("font-display text-base xl:text-lg font-semibold text-text-primary leading-tight truncate transition-all duration-200", isCollapsed && "hidden")}>
@@ -828,22 +959,47 @@ export function Sidebar({
                           {displayedForms.map((form) => (
                             <div key={form.id} className="group relative">
                               <div className="flex items-center justify-between w-full">
-                                <Link
-                                  href={`/forms/${form.id}`}
-                                  style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-sm)' }}
-                                  className={cn(
-                                    'flex items-center gap-2 px-3 text-text-secondary hover:text-text-primary rounded hover:bg-bg-elevated transition truncate flex-1',
-                                    pathname === `/forms/${form.id}` && 'text-text-primary font-medium'
-                                  )}
-                                >
-                                  <FileText
-                                    style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
-                                    className="shrink-0 text-text-tertiary"
-                                  />
-                                  <span className={cn("truncate transition-all duration-200", isCollapsed && "hidden")}>
-                                    {form.title || 'Formulaire sans titre'}
-                                  </span>
-                                </Link>
+                                {editingFormId === form.id ? (
+                                  <form
+                                    onSubmit={(e) => {
+                                      e.preventDefault();
+                                      handleRenameFormSubmit(form.id);
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex-1 px-3"
+                                  >
+                                    <input
+                                      type="text"
+                                      value={editFormTitle}
+                                      onChange={(e) => setEditFormTitle(e.target.value)}
+                                      onBlur={() => {
+                                        handleRenameFormSubmit(form.id);
+                                      }}
+                                      className="w-full px-1 py-0.5 border border-border bg-bg-surface rounded text-[11px] font-normal focus:outline-none focus:border-accent text-text-primary"
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Escape') setEditingFormId(null);
+                                      }}
+                                    />
+                                  </form>
+                                ) : (
+                                  <Link
+                                    href={`/forms/${form.id}`}
+                                    style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-sm)' }}
+                                    className={cn(
+                                      'flex items-center gap-2 px-3 text-text-secondary hover:text-text-primary rounded hover:bg-bg-elevated transition truncate flex-1',
+                                      pathname === `/forms/${form.id}` && 'text-text-primary font-medium'
+                                    )}
+                                  >
+                                    <FileText
+                                      style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
+                                      className="shrink-0 text-text-tertiary"
+                                    />
+                                    <span className={cn("truncate transition-all duration-200", isCollapsed && "hidden")}>
+                                      {form.title || 'Formulaire sans titre'}
+                                    </span>
+                                  </Link>
+                                )}
 
                                 {/* Bouton menu contextuel */}
                                 <button
@@ -1018,7 +1174,7 @@ export function Sidebar({
       </div>
 
       {/* Delete Confirmation Modal for Workspaces */}
-      {deletingWorkspace && (
+      {deletingWorkspace && typeof window !== 'undefined' && createPortal(
         <Modal
           isOpen={!!deletingWorkspace}
           onClose={() => setDeletingWorkspace(null)}
@@ -1049,7 +1205,8 @@ export function Sidebar({
               </Button>
             </div>
           </div>
-        </Modal>
+        </Modal>,
+        document.body
       )}
 
       {/* Dropdown menu des formulaires rendu dans un portail */}
@@ -1069,7 +1226,7 @@ export function Sidebar({
       )}
 
       {/* Modal de Gestion des Membres du Workspace */}
-      {managingWorkspace && (
+      {managingWorkspace && typeof window !== 'undefined' && createPortal(
         <Modal
           isOpen={!!managingWorkspace}
           onClose={() => setManagingWorkspace(null)}
@@ -1096,7 +1253,7 @@ export function Sidebar({
                   onClick={() => {
                     if (managingWorkspace) {
                       const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/workspaces/${managingWorkspace.id}`;
-                      navigator.clipboard.writeText(url);
+                      copyToClipboard(url);
                       toast.success('Lien copié !');
                     }
                   }}
@@ -1197,21 +1354,79 @@ export function Sidebar({
               </Button>
             </div>
           </div>
-        </Modal>
+        </Modal>,
+        document.body
       )}
 
       {/* Modal de Confirmation de Suppression de Membre */}
-      <ConfirmationModal
-        isOpen={!!memberToRemove}
-        onClose={() => setMemberToRemove(null)}
-        onConfirm={confirmRemoveMember}
-        title="Retirer ce membre ?"
-        message={`Êtes-vous sûr de vouloir retirer ${memberToRemove?.email} de cet espace de travail ? Cette action est irréversible.`}
-        confirmText="Retirer"
-        cancelText="Annuler"
-        loading={removeLoading}
-        variant="danger"
-      />
+      {memberToRemove && typeof window !== 'undefined' && createPortal(
+        <ConfirmationModal
+          isOpen={!!memberToRemove}
+          onClose={() => setMemberToRemove(null)}
+          onConfirm={confirmRemoveMember}
+          title="Retirer ce membre ?"
+          message={`Êtes-vous sûr de vouloir retirer ${memberToRemove?.email} de cet espace de travail ? Cette action est irréversible.`}
+          confirmText="Retirer"
+          cancelText="Annuler"
+          loading={removeLoading}
+          variant="danger"
+        />,
+        document.body
+      )}
+
+      {/* Modal de Déplacement de Formulaire */}
+      {movingFormId && typeof window !== 'undefined' && createPortal(
+        <Modal
+          isOpen={!!movingFormId}
+          onClose={() => setMovingFormId(null)}
+          title="Changer d'espace de travail"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Choisissez l'espace de travail cible pour déplacer ce formulaire :
+            </p>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {workspaces.map((ws) => {
+                const form = movingFormId ? findFormById(movingFormId) : null;
+                const currentWsId = isLocal ? form?.workspace_id : form?.team_id;
+                const isCurrent = currentWsId === ws.id;
+
+                return (
+                  <button
+                    key={ws.id}
+                    onClick={() => {
+                      if (!isCurrent && movingFormId) {
+                        handleMoveForm(movingFormId, ws.id);
+                      }
+                    }}
+                    disabled={isCurrent}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg border p-3 text-left transition text-sm",
+                      isCurrent
+                        ? "border-accent bg-accent/5 text-text-primary cursor-default opacity-60"
+                        : "border-border hover:border-border-strong hover:bg-bg-elevated text-text-secondary hover:text-text-primary"
+                    )}
+                  >
+                    <span className="font-medium">{ws.name}</span>
+                    {isCurrent && <span className="text-xs text-accent bg-accent/10 px-2 py-0.5 rounded-full">Actuel</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setMovingFormId(null)}
+              >
+                Annuler
+              </Button>
+            </div>
+          </div>
+        </Modal>,
+        document.body
+      )}
     </aside>
   );
 }

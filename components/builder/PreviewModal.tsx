@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { useFormScore } from '@/lib/hooks/useFormScore';
 import type { ScoreResult } from '@/lib/scoring';
 import { ScoreDisplay } from '@/components/respondent/ScoreDisplay';
+import { evaluateLogicRules, evaluateConditions } from '@/lib/logic-evaluation';
 
 interface Props {
   form: Form;
@@ -36,6 +37,19 @@ export function PreviewModal({ form, onClose }: Props) {
     scoringEnabled,
     showScoreToRespondent
   } = useFormScore(form);
+
+  const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
+
+  // Évaluer la visibilité des champs (changement de réponses, structure ou règles)
+  useEffect(() => {
+    const fields = form.fields || [];
+    const newVisibleFields = evaluateLogicRules(
+      form.logic_rules || [],
+      responses,
+      fields
+    );
+    setVisibleFields(newVisibleFields);
+  }, [responses, form.logic_rules, form.fields]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -76,6 +90,7 @@ export function PreviewModal({ form, onClose }: Props) {
               updateResponse={updateResponse}
               scoreResult={scoreResult!}
               showScoreToRespondent={showScoreToRespondent}
+              visibleFields={visibleFields}
             />
           ) : mode === 'typeform' ? (
             <TypeformPreview
@@ -85,6 +100,7 @@ export function PreviewModal({ form, onClose }: Props) {
               updateResponse={updateResponse}
               scoreResult={scoreResult!}
               showScoreToRespondent={showScoreToRespondent}
+              visibleFields={visibleFields}
             />
           ) : (
             <ScrollPreview
@@ -94,6 +110,7 @@ export function PreviewModal({ form, onClose }: Props) {
               updateResponse={updateResponse}
               scoreResult={scoreResult!}
               showScoreToRespondent={showScoreToRespondent}
+              visibleFields={visibleFields}
             />
           )}
         </div>
@@ -122,7 +139,7 @@ function PreviewToolbar({
     mode === 'sections' ? 'Pages' : mode === 'typeform' ? 'Une à une' : 'Défilement';
 
   return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid var(--border)', background:'var(--bg-surface)', padding:'0 24px', minHeight:'3.5rem' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', padding: '0 24px', minHeight: '3.5rem' }}>
       {/* GAUCHE — largeur fixe identique au côté gauche du toolbar édition */}
       <div style={{ flex: 1 }}></div>
 
@@ -137,7 +154,7 @@ function PreviewToolbar({
       </div>
 
       {/* DROITE — flex:1 + flex-end pour coller à droite */}
-      <div style={{ flex: 1, display:'flex', justifyContent:'flex-end' }}>
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
         <button
           onClick={onClose}
           style={{
@@ -194,8 +211,8 @@ function PreviewHeader({ form }: { form: Form }) {
       <FormHeader
         theme={form.theme}
         selectedElement={null}
-        onSelectBanner={() => {}}
-        onSelectLogo={() => {}}
+        onSelectBanner={() => { }}
+        onSelectLogo={() => { }}
         preview={true}
       />
       <header className="mb-8">
@@ -340,7 +357,8 @@ function ScrollPreview({
   responses,
   updateResponse,
   scoreResult,
-  showScoreToRespondent
+  showScoreToRespondent,
+  visibleFields
 }: {
   form: Form;
   device: Device;
@@ -348,8 +366,9 @@ function ScrollPreview({
   updateResponse: (fieldId: string, response: any) => void;
   scoreResult: ScoreResult;
   showScoreToRespondent: boolean;
+  visibleFields: Set<string>;
 }) {
-  const fields = form.fields ?? [];
+  const fields = (form.fields ?? []).filter(f => visibleFields.has(f.id));
   const hasInputs = fields.some(
     (f) => f.type !== 'section_break' && f.type !== 'image' && f.type !== 'video' && f.type !== 'statement'
   );
@@ -367,25 +386,36 @@ function ScrollPreview({
       <div className={cn('grid gap-4', device === 'mobile' ? 'grid-cols-1' : 'grid-cols-2')}>
         {fields.length === 0 && (
           <div className="col-span-full rounded-lg border border-dashed border-border-strong bg-bg-surface p-12 text-center">
-            <p className="papyrus-meta text-sm">i. Ce formulaire n&apos;a pas encore de champ</p>
+            <p className="papyrus-meta text-sm">i. Ce formulaire n&apos;a pas encore de champ visible</p>
           </div>
         )}
 
-        {fields.map((field) => {
-          const span =
-            device === 'mobile' || (field.layout_width ?? 'full') === 'full' ? 'col-span-2' : 'col-span-1';
-          return (
-            <PreviewFieldCard
-              key={field.id}
-              field={field}
-              form={form}
-              device={device}
-              span={span}
-              responses={responses}
-              updateResponse={updateResponse}
-            />
-          );
-        })}
+        <AnimatePresence initial={false}>
+          {fields.map((field) => {
+            const span =
+              device === 'mobile' || (field.layout_width ?? 'full') === 'full' ? 'col-span-2' : 'col-span-1';
+            return (
+              <motion.div
+                key={field.id}
+                layout
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className={span}
+              >
+                <PreviewFieldCard
+                  field={field}
+                  form={form}
+                  device={device}
+                  span="w-full"
+                  responses={responses}
+                  updateResponse={updateResponse}
+                />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
       {/* Affichage du score de maturité si activé */}
@@ -420,7 +450,8 @@ function SectionsPreview({
   responses,
   updateResponse,
   scoreResult,
-  showScoreToRespondent
+  showScoreToRespondent,
+  visibleFields
 }: {
   form: Form;
   device: Device;
@@ -428,8 +459,9 @@ function SectionsPreview({
   updateResponse: (fieldId: string, response: any) => void;
   scoreResult: ScoreResult;
   showScoreToRespondent: boolean;
+  visibleFields: Set<string>;
 }) {
-  const fields = form.fields ?? [];
+  const fields = (form.fields ?? []).filter(f => visibleFields.has(f.id));
   const pages = buildPages(fields);
   const [pageIdx, setPageIdx] = useState(0);
   const total = pages.length;
@@ -591,7 +623,8 @@ function TypeformPreview({
   responses,
   updateResponse,
   scoreResult,
-  showScoreToRespondent
+  showScoreToRespondent,
+  visibleFields
 }: {
   form: Form;
   device: Device;
@@ -599,28 +632,89 @@ function TypeformPreview({
   updateResponse: (fieldId: string, response: any) => void;
   scoreResult: ScoreResult;
   showScoreToRespondent: boolean;
+  visibleFields: Set<string>;
 }) {
-  const fields = form.fields ?? [];
+  const fields = (form.fields ?? []).filter(f => visibleFields.has(f.id));
   const screens = fields.filter((f) => f.type !== 'section_break');
   const [idx, setIdx] = useState(0);
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
+  const [history, setHistory] = useState<string[]>([]);
   const total = screens.length;
   const current = screens[idx];
   const isLast = idx === total - 1;
   const progress = total > 0 ? ((idx + 1) / total) * 100 : 0;
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const handleNext = () => {
+    if (!current) return;
+
+    const fieldRules = (form.logic_rules ?? [])
+      .filter((r) => r.conditions && r.conditions.some(c => c.source_field_id === current.id))
+      .sort((a, b) => (a.rule_order || 0) - (b.rule_order || 0));
+
+    let triggeredAction: { action_type: string; target_field_id?: string } | null = null;
+
+    for (const rule of fieldRules) {
+      if (evaluateConditions(rule.conditions, rule.conditions_operator || 'AND', responses)) {
+        triggeredAction = rule;
+        break;
+      }
+    }
+
+    if (triggeredAction) {
+      if (triggeredAction.action_type === 'end_form') {
+        alert('Formulaire envoyé (démo)');
+        return;
+      }
+
+      if (triggeredAction.action_type === 'jump_to' && triggeredAction.target_field_id) {
+        let targetIdx = screens.findIndex(f => f.id === triggeredAction!.target_field_id);
+        if (targetIdx === -1) {
+          const targetFieldInForm = form.fields?.find(f => f.id === triggeredAction!.target_field_id);
+          if (targetFieldInForm) {
+            targetIdx = screens.findIndex(f => f.field_order >= targetFieldInForm.field_order);
+          }
+        }
+        if (targetIdx !== -1) {
+          setDirection('forward');
+          setHistory(prev => [...prev, current.id]);
+          setIdx(targetIdx);
+          return;
+        }
+      }
+    }
+
     if (isLast) {
       alert('Formulaire envoyé (démo)');
-      return;
+    } else {
+      setDirection('forward');
+      setHistory(prev => [...prev, current.id]);
+      setIdx(idx + 1);
     }
-    setDirection('forward');
-    setIdx(idx + 1);
+  };
+
+  const handleNextRef = useRef(handleNext);
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    handleNext();
   }
 
   function prev() {
-    if (idx > 0) {
+    if (history.length > 0) {
+      const prevId = history[history.length - 1];
+      setHistory(prev => prev.slice(0, -1));
+      const prevIdx = screens.findIndex(f => f.id === prevId);
+      if (prevIdx !== -1) {
+        setDirection('back');
+        setIdx(prevIdx);
+      } else if (idx > 0) {
+        setDirection('back');
+        setIdx(idx - 1);
+      }
+    } else if (idx > 0) {
       setDirection('back');
       setIdx(idx - 1);
     }
@@ -644,7 +738,7 @@ function TypeformPreview({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [idx]);
+  }, []);
 
   if (total === 0) {
     return (
@@ -724,7 +818,7 @@ function TypeformPreview({
               <button
                 type="button"
                 onClick={prev}
-                disabled={idx === 0}
+                disabled={idx === 0 && history.length === 0}
                 className="inline-flex items-center gap-1 text-text-secondary transition hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Retour
@@ -740,7 +834,14 @@ function TypeformPreview({
               form={form}
               device={device}
               responses={responses}
-              updateResponse={updateResponse}
+              updateResponse={(fieldId, val) => {
+                updateResponse(fieldId, val);
+                if (current.type === 'single_choice' && val !== '__other__' && !isLast) {
+                  setTimeout(() => {
+                    handleNextRef.current();
+                  }, 300);
+                }
+              }}
             />
 
             {/* Affichage du score sur la dernière question */}
@@ -918,7 +1019,7 @@ function FieldQuestion({
         </span>
       </div>
       {field.description.fr && (
-        <p 
+        <p
           className={cn(
             "papyrus-meta mt-1 text-sm break-words whitespace-pre-wrap",
             isRespondentUpload ? 'italic text-text-tertiary font-normal' : ''

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Image as ImageIcon, Layers, Palette, Sparkles, Upload, X } from 'lucide-react';
+import { Image as ImageIcon, Layers, Palette, Sparkles, Upload, X, Plus, Trash2 } from 'lucide-react';
 import type {
   BackgroundType,
   DisplayMode,
@@ -9,11 +9,13 @@ import type {
   FormTheme,
   BannerFit,
   BannerPosition,
-  FieldStyle
+  FieldStyle,
+  ScoreLevel
 } from '@/types';
 import { Input } from '@/components/ui/Input';
 import { Switch } from '@/components/ui/Switch';
 import { BACKGROUND_PRESETS } from '@/lib/theme';
+import { DEFAULT_SCORE_LEVELS } from '@/lib/scoring';
 import { cn } from '@/lib/utils';
 import { StyleControls } from './StyleControls';
 
@@ -182,6 +184,137 @@ function SettingsTab({ form, onFormChange }: { form: Form; onFormChange: (patch:
                 />
               </div>
             </div>
+
+            {/* Éditeur de niveaux de score */}
+            <div className="mt-4 border-t border-dashed border-border pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h5 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                  Niveaux de maturité
+                </h5>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentLevels = form.theme.score_levels || [...DEFAULT_SCORE_LEVELS];
+                    let nextMin = 0;
+                    for (let p = 10; p <= 100; p += 10) {
+                      if (!currentLevels.some(l => l.minPercent === p)) {
+                        nextMin = p;
+                        break;
+                      }
+                    }
+                    const newLevel: ScoreLevel = {
+                      minPercent: nextMin,
+                      title: 'Nouveau niveau',
+                      description: 'Description du niveau...',
+                      color: 'blue'
+                    };
+                    onFormChange({
+                      theme: {
+                        ...form.theme,
+                        score_levels: [...currentLevels, newLevel].sort((a, b) => b.minPercent - a.minPercent)
+                      }
+                    });
+                  }}
+                  className="text-xs font-medium text-mooove-cyan hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Ajouter
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {((form.theme.score_levels && form.theme.score_levels.length > 0)
+                  ? form.theme.score_levels
+                  : DEFAULT_SCORE_LEVELS
+                ).map((level, idx) => {
+                  const updateLevel = (patch: Partial<ScoreLevel>) => {
+                    const currentLevels = form.theme.score_levels || [...DEFAULT_SCORE_LEVELS];
+                    const updated = currentLevels.map((l, i) => i === idx ? { ...l, ...patch } : l);
+                    onFormChange({
+                      theme: {
+                        ...form.theme,
+                        score_levels: updated
+                      }
+                    });
+                  };
+
+                  const deleteLevel = () => {
+                    const currentLevels = form.theme.score_levels || [...DEFAULT_SCORE_LEVELS];
+                    if (currentLevels.length <= 1) {
+                      alert('Vous devez garder au moins un niveau.');
+                      return;
+                    }
+                    const updated = currentLevels.filter((_, i) => i !== idx);
+                    onFormChange({
+                      theme: {
+                        ...form.theme,
+                        score_levels: updated
+                      }
+                    });
+                  };
+
+                  return (
+                    <div key={idx} className="rounded-lg border border-border p-3 space-y-2 bg-bg-base/30 relative">
+                      <button
+                        type="button"
+                        onClick={deleteLevel}
+                        className="absolute top-2.5 right-2.5 text-text-tertiary hover:text-danger transition cursor-pointer"
+                        title="Supprimer ce niveau"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+
+                      <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                        <label className="text-[11px] text-text-secondary">Min %</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={level.minPercent}
+                          onChange={(e) => {
+                            const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                            updateLevel({ minPercent: val });
+                          }}
+                          className="h-8 rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none w-20"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                        <label className="text-[11px] text-text-secondary">Titre</label>
+                        <input
+                          type="text"
+                          value={level.title}
+                          onChange={(e) => updateLevel({ title: e.target.value })}
+                          className="h-8 rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none w-full"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-[80px_1fr] gap-2 items-start">
+                        <label className="text-[11px] text-text-secondary pt-1.5">Description</label>
+                        <textarea
+                          value={level.description}
+                          onChange={(e) => updateLevel({ description: e.target.value })}
+                          className="h-16 rounded-md border border-border bg-bg-surface p-2 text-xs focus:border-accent focus:outline-none w-full resize-none leading-relaxed"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                        <label className="text-[11px] text-text-secondary">Couleur</label>
+                        <select
+                          value={level.color}
+                          onChange={(e) => updateLevel({ color: e.target.value as any })}
+                          className="h-8 rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none w-32"
+                        >
+                          <option value="green">Vert (Excellent)</option>
+                          <option value="blue">Bleu (Bien)</option>
+                          <option value="orange">Orange (Moyen)</option>
+                          <option value="red">Rouge (À développer)</option>
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -213,6 +346,49 @@ function SettingsTab({ form, onFormChange }: { form: Form; onFormChange: (patch:
           label="Permettre la reprise d'une réponse en cours"
           description="Les réponses en cours sont enregistrées dans le navigateur. Si le répondant revient, on lui propose de reprendre où il s'était arrêté. Aucune donnée n'est envoyée tant que le formulaire n'est pas soumis."
         />
+      </div>
+
+      <div className="space-y-3 border-t border-dashed border-border pt-5">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Questions obligatoires
+        </h4>
+        <Switch
+          checked={form.require_all_by_default ?? false}
+          onChange={(require_all_by_default) => onFormChange({ require_all_by_default })}
+          label="Questions obligatoires par défaut"
+          description="Les nouveaux champs ajoutés seront marqués comme obligatoires par défaut"
+        />
+      </div>
+
+      <div className="space-y-3 border-t border-dashed border-border pt-5">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Date de clôture
+        </h4>
+        <Switch
+          checked={!!form.closes_at}
+          onChange={(checked) => {
+            if (checked) {
+              const tomorrow = new Date();
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              const localIsoString = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+              onFormChange({ closes_at: localIsoString });
+            } else {
+              onFormChange({ closes_at: null });
+            }
+          }}
+          label="Définir une date de clôture"
+          description="Le formulaire sera automatiquement fermé aux répondants après cette date."
+        />
+        {form.closes_at && (
+          <div className="mt-2">
+            <input
+              type="datetime-local"
+              value={form.closes_at.slice(0, 16)}
+              onChange={(e) => onFormChange({ closes_at: e.target.value })}
+              className="h-10 w-full rounded-md border border-border-strong bg-bg-surface px-3 text-sm text-text-primary focus:border-accent focus:outline-none"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

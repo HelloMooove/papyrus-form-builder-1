@@ -8,86 +8,102 @@ export function evaluateLogicRules(
   responses: Record<string, any>,
   fields: Field[]
 ): Set<string> {
-  // Commencer avec tous les champs visibles par défaut
-  const visibleFields = new Set(fields.map(f => f.id));
+  // Étape 1 : identifier les champs qui sont cibles d'au moins une règle show_field
+  // Ces champs sont cachés par défaut — automatiquement, sans toggle manuel
+  const targetsOfShowRules = new Set(
+    rules
+      .filter(r => r.action_type === 'show_field')
+      .map(r => r.target_field_id)
+      .filter((id): id is string => !!id)
+  );
 
-  // Trier les règles par rule_order pour un ordre d'évaluation cohérent
-  const sortedRules = [...rules].sort((a, b) => (a.rule_order || 0) - (b.rule_order || 0));
+  // Étape 2 : construire l'ensemble des champs visibles
+  const visibleIds = new Set<string>();
 
-  for (const rule of sortedRules) {
-    const sourceValue = responses[rule.source_field_id];
-    const conditionMet = evaluateCondition(rule.condition, sourceValue, rule.condition_value);
-
-    if (conditionMet) {
-      applyAction(rule, visibleFields);
+  for (const field of fields) {
+    if (targetsOfShowRules.has(field.id)) {
+      // Caché par défaut — visible seulement si une règle show_field le cible ET ses conditions sont vraies
+      const shown = rules
+        .filter(r => r.action_type === 'show_field' && r.target_field_id === field.id)
+        .some(r => evaluateConditions(r.conditions, r.conditions_operator, responses));
+      if (shown) visibleIds.add(field.id);
+    } else {
+      // Visible par défaut — caché seulement si une règle hide_field le cible ET ses conditions sont vraies
+      const hidden = rules
+        .filter(r => r.action_type === 'hide_field' && r.target_field_id === field.id)
+        .some(r => evaluateConditions(r.conditions, r.conditions_operator, responses));
+      if (!hidden) visibleIds.add(field.id);
     }
   }
 
-  return visibleFields;
+  return visibleIds;
 }
 
 /**
- * Évalue une condition logique
+ * Évalue un ensemble de conditions reliées par ET/OU
  */
-function evaluateCondition(
-  condition: LogicCondition,
-  sourceValue: any,
-  conditionValue: string
+export function evaluateConditions(
+  conditions: LogicCondition[],
+  operator: 'AND' | 'OR',
+  responses: Record<string, any>
 ): boolean {
-  // Normaliser les valeurs en string pour la comparaison
-  const sourceStr = String(sourceValue || '').toLowerCase().trim();
-  const conditionStr = conditionValue.toLowerCase().trim();
+  if (!conditions || conditions.length === 0) return false;
+  const results = conditions.map(c => evaluateSingleCondition(c, responses));
+  return operator === 'AND' ? results.every(Boolean) : results.some(Boolean);
+}
 
-  switch (condition) {
+/**
+ * Évalue une seule condition logique
+ */
+export function evaluateSingleCondition(
+  condition: LogicCondition,
+  responses: Record<string, any>
+): boolean {
+  const raw = responses[condition.source_field_id];
+  
+  // Si la réponse est un tableau (par exemple choix multiple), on normalise
+  let value = '';
+  if (Array.isArray(raw)) {
+    // Si c'est un tableau, on peut vérifier l'égalité ou si ça contient
+    value = JSON.stringify(raw);
+  } else {
+    value = String(raw ?? '');
+  }
+  
+  const target = condition.value;
+
+  switch (condition.operator) {
     case 'equals':
-      return sourceStr === conditionStr;
+      if (Array.isArray(raw)) {
+        return raw.includes(target);
+      }
+      return value === target;
 
     case 'not_equals':
-      return sourceStr !== conditionStr;
+      if (Array.isArray(raw)) {
+        return !raw.includes(target);
+      }
+      return value !== target;
 
     case 'contains':
-      return sourceStr.includes(conditionStr);
+      if (Array.isArray(raw)) {
+        return raw.includes(target);
+      }
+      return value.toLowerCase().includes(target.toLowerCase());
+
+    case 'not_contains':
+      if (Array.isArray(raw)) {
+        return !raw.includes(target);
+      }
+      return !value.toLowerCase().includes(target.toLowerCase());
 
     case 'greater_than':
-      const sourceNum = parseFloat(sourceStr);
-      const conditionNum = parseFloat(conditionStr);
-      return !isNaN(sourceNum) && !isNaN(conditionNum) && sourceNum > conditionNum;
+      return Number(value) > Number(target);
 
     case 'less_than':
-      const sourceNum2 = parseFloat(sourceStr);
-      const conditionNum2 = parseFloat(conditionStr);
-      return !isNaN(sourceNum2) && !isNaN(conditionNum2) && sourceNum2 < conditionNum2;
+      return Number(value) < Number(target);
 
     default:
       return false;
-  }
-}
-
-/**
- * Applique une action logique
- */
-function applyAction(rule: LogicRule, visibleFields: Set<string>): void {
-  switch (rule.action_type) {
-    case 'show_field':
-      if (rule.target_field_id) {
-        visibleFields.add(rule.target_field_id);
-      }
-      break;
-
-    case 'hide_field':
-      if (rule.target_field_id) {
-        visibleFields.delete(rule.target_field_id);
-      }
-      break;
-
-    case 'jump_to':
-      // Pour jump_to, dans une vraie implémentation on gérerait la navigation
-      // Pour l'instant on ne fait rien, cela sera géré dans les composants typeform/sections
-      break;
-
-    case 'end_form':
-      // Pour end_form, dans une vraie implémentation on terminerait le formulaire
-      // Pour l'instant on ne fait rien, cela sera géré dans les composants typeform/sections
-      break;
   }
 }

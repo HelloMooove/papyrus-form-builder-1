@@ -1,4 +1,5 @@
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, useState, type InputHTMLAttributes } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -9,13 +10,15 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, error, label, hint, id, showCounter = true, maxLength, ...props }, ref) => {
+  ({ className, error, label, hint, id, showCounter = true, maxLength, type, ...props }, ref) => {
+    const [showPassword, setShowPassword] = useState(false);
     const inputId = id || props.name;
     const currentLength = typeof props.value === 'string' || typeof props.value === 'number' 
       ? String(props.value).length 
       : 0;
 
     const showCharCounter = showCounter && maxLength !== undefined && maxLength > 0;
+    const isPasswordType = type === 'password';
 
     return (
       <div className="space-y-1.5">
@@ -24,19 +27,33 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             {label}
           </label>
         )}
-        <input
-          id={inputId}
-          ref={ref}
-          maxLength={maxLength}
-          className={cn(
-            'h-14 w-full rounded-md border bg-bg-surface px-5 text-xl text-text-primary',
-            'placeholder:text-text-tertiary',
-            'transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-cta/20',
-            error ? 'border-danger' : 'border-border-strong',
-            className
+        <div className="relative">
+          <input
+            id={inputId}
+            ref={ref}
+            maxLength={maxLength}
+            type={isPasswordType && showPassword ? 'text' : type}
+            className={cn(
+              'h-14 w-full rounded-md border bg-bg-surface px-5 text-xl text-text-primary',
+              isPasswordType && 'pr-12',
+              'placeholder:text-text-tertiary',
+              'transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-cta/20',
+              error ? 'border-danger' : 'border-border-strong',
+              className
+            )}
+            {...props}
+          />
+          {isPasswordType && (
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition"
+              aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
           )}
-          {...props}
-        />
+        </div>
         {(hint || error || showCharCounter) && (
           <div className="flex items-start justify-between gap-2 text-lg">
             <div className="flex-1">
@@ -63,4 +80,5 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   }
 );
 Input.displayName = 'Input';
+
 

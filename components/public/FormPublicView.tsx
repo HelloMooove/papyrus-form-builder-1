@@ -34,21 +34,14 @@ export function FormPublicView({ form }: Props) {
   // États pour la logique conditionnelle
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
 
-  // Initialiser les champs visibles
+  // Évaluer la visibilité des champs (changement de réponses, structure ou règles)
   useEffect(() => {
     const fields = form.fields || [];
-    const initialVisible = new Set(fields.map(f => f.id));
-    setVisibleFields(initialVisible);
-  }, [form.fields]);
-
-  // Évaluer les règles logiques à chaque changement de réponse
-  useEffect(() => {
-    if (!form.logic_rules || form.logic_rules.length === 0) return;
-
+    
     const newVisibleFields = evaluateLogicRules(
-      form.logic_rules,
+      form.logic_rules || [],
       responses,
-      form.fields || []
+      fields
     );
 
     setVisibleFields(newVisibleFields);

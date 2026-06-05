@@ -9,7 +9,15 @@ export interface VideoEmbed {
  */
 export function parseVideoEmbed(input: string): VideoEmbed | null {
   if (!input) return null;
-  const trimmed = input.trim();
+  let trimmed = input.trim();
+
+  // Si c'est un tag iframe, on extrait l'URL du src
+  if (trimmed.includes('<iframe')) {
+    const srcMatch = trimmed.match(/src=["']([^"']+)["']/);
+    if (srcMatch) {
+      trimmed = srcMatch[1];
+    }
+  }
 
   // YouTube
   const yt = trimmed.match(

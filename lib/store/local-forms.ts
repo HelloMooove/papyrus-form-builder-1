@@ -159,7 +159,7 @@ export function addField(
                 { id: uuid(), label: emptyMultilingual('Critère 3') }
               ]
             : undefined,
-        required: false,
+        required: form.require_all_by_default ?? false,
         field_order: fields.length,
         validation: type === 'matrix' ? { matrix_mode: 'single' } : {}
       };
@@ -299,7 +299,7 @@ export function listLogicRules(formId: string, sourceFieldId?: string): LogicRul
   const form = getForm(formId);
   if (!form) return [];
   const rules = form.logic_rules ?? [];
-  return sourceFieldId ? rules.filter((r) => r.source_field_id === sourceFieldId) : rules;
+  return sourceFieldId ? rules.filter((r) => r.conditions.some(c => c.source_field_id === sourceFieldId)) : rules;
 }
 
 export function addLogicRule(
@@ -377,4 +377,106 @@ export function updateTeamMemberRole(teamId: string, userId: string, role: 'admi
 
 export function deleteTeamMember(teamId: string, userId: string): void {
   // Mock
+}
+
+/**
+ * Importe un formulaire JSON dans localStorage en remappant tous les identifiants
+ */
+export function importForm(
+  formJson: Partial<Form> & { fields?: Field[]; logic_rules?: LogicRule[] },
+  workspaceId?: string
+): Form {
+  const now = new Date().toISOString();
+  const newFormId = uuid();
+  
+  // 1. Remap fields and options/rows
+  const fieldIdMap: Record<string, string> = {};
+  const optionIdMap: Record<string, string> = {};
+  
+  const mappedFields: Field[] = (formJson.fields || []).map((field, index) => {
+    const newFieldId = uuid();
+    fieldIdMap[field.id] = newFieldId;
+    
+    const mappedOptions = (field.options || []).map(opt => {
+      const newOptId = uuid();
+      optionIdMap[opt.id] = newOptId;
+      return {
+        ...opt,
+        id: newOptId
+      };
+    });
+    
+    const mappedRows = field.rows ? field.rows.map(row => {
+      const newRowId = uuid();
+      optionIdMap[row.id] = newRowId;
+      return {
+        ...row,
+        id: newRowId
+      };
+    }) : undefined;
+    
+    return {
+      ...field,
+      id: newFieldId,
+      form_id: newFormId,
+      options: mappedOptions,
+      rows: mappedRows,
+      field_order: index
+    };
+  });
+  
+  // 2. Remap logic rules
+  const mappedRules: LogicRule[] = (formJson.logic_rules || []).map(rule => {
+    const newRuleId = uuid();
+    
+    const mappedConditions = (rule.conditions || []).map(cond => {
+      let newConditionValue = cond.value;
+      if (optionIdMap[cond.value]) {
+        newConditionValue = optionIdMap[cond.value];
+      }
+      return {
+        source_field_id: fieldIdMap[cond.source_field_id] || cond.source_field_id,
+        operator: cond.operator,
+        value: newConditionValue
+      };
+    });
+    
+    return {
+      ...rule,
+      id: newRuleId,
+      form_id: newFormId,
+      conditions: mappedConditions,
+      conditions_operator: rule.conditions_operator || 'AND',
+      action_type: rule.action_type,
+      target_field_id: rule.target_field_id ? (fieldIdMap[rule.target_field_id] || rule.target_field_id) : undefined,
+      rule_order: rule.rule_order
+    };
+  });
+  
+  // 3. Assemble new Form
+  const newForm: Form = {
+    ...formJson,
+    id: newFormId,
+    workspace_id: workspaceId || formJson.workspace_id,
+    team_id: 'local',
+    created_by: 'local-user',
+    title: formJson.title || 'Formulaire importé',
+    slug: uniqueSlug(formJson.title || 'Formulaire importé'),
+    status: 'draft',
+    is_template: false,
+    template_origin_id: null,
+    fields: mappedFields,
+    logic_rules: mappedRules,
+    created_at: now,
+    updated_at: now,
+    published_at: null,
+    closes_at: null,
+    responses_count: undefined,
+    completion_rate: undefined
+  } as any;
+  
+  const all = readAll();
+  all.push(newForm);
+  writeAll(all);
+  return newForm;
 }

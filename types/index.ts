@@ -157,15 +157,18 @@ export interface Field {
   created_at?: string;
 }
 
-export type LogicCondition = 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than';
+export interface LogicCondition {
+  source_field_id: string;
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'greater_than' | 'less_than';
+  value: string;
+}
 export type LogicAction = 'show_field' | 'hide_field' | 'jump_to' | 'end_form';
 
 export interface LogicRule {
   id: string;
   form_id: string;
-  source_field_id: string;
-  condition: LogicCondition;
-  condition_value: string;
+  conditions: LogicCondition[];
+  conditions_operator: 'AND' | 'OR';
   action_type: LogicAction;
   target_field_id?: string;
   rule_order: number;
@@ -215,6 +218,15 @@ export interface FormTheme {
   score_label?: string;
   /** Description personnalisée du score (défaut: "Basé sur vos réponses à ce formulaire") */
   score_description?: string;
+  /** Niveaux de maturité personnalisés */
+  score_levels?: ScoreLevel[];
+}
+
+export interface ScoreLevel {
+  minPercent: number;
+  title: string;
+  description: string;
+  color: 'green' | 'blue' | 'orange' | 'red';
 }
 
 export interface Form {
@@ -248,6 +260,8 @@ export interface Form {
   save_and_resume?: boolean;
   /** Si vrai, un même email ne peut soumettre qu'une seule fois (nécessite un champ email). */
   unique_email?: boolean;
+  /** Si vrai, les nouveaux champs créés sont requis par défaut. */
+  require_all_by_default?: boolean;
   /** Si vrai, active le système de scoring avec attribution de points aux réponses. */
   scoring_enabled?: boolean;
   /** Si vrai, affiche le score final au répondant (nécessite scoring_enabled). */

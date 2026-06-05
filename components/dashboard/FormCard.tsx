@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal, Edit2, Copy, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Edit2, Copy, Trash2, Download } from 'lucide-react';
 import type { Form } from '@/types';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -39,6 +39,27 @@ export function FormCard({ form, onEdit, onDuplicate, onDelete }: FormCardProps)
     setShowDeleteModal(false);
   };
 
+  const handleExportJson = () => {
+    try {
+      const cleanForm = { ...form };
+      // Supprimer les champs de réponses et de statistiques pour ne garder que le design
+      delete (cleanForm as any).responses_count;
+      delete (cleanForm as any).completion_rate;
+      
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cleanForm, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      const filename = `${(form.title || 'formulaire').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_export.json`;
+      downloadAnchor.setAttribute("download", filename);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (error) {
+      console.error('Failed to export JSON:', error);
+      alert('Une erreur est survenue lors de l\'exportation');
+    }
+  };
+
   return (
     <>
       <div
@@ -47,9 +68,17 @@ export function FormCard({ form, onEdit, onDuplicate, onDelete }: FormCardProps)
       >
         {/* Top bar with Badge and Options Menu */}
         <div className="flex items-start justify-between">
-          <Badge variant={form.status}>
-            {form.status === 'published' ? 'Publié' : form.status === 'closed' ? 'Clos' : 'Brouillon'}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={form.status}>
+              {form.status === 'published' ? 'Publié' : form.status === 'closed' ? 'Clos' : 'Brouillon'}
+            </Badge>
+            {form.closes_at && (
+              <Badge variant="neutral" className="flex items-center gap-1.5 border-dashed text-xs py-0.5 px-2 font-normal">
+                <span className={`h-1.5 w-1.5 rounded-full ${new Date(form.closes_at) > new Date() ? 'bg-orange-500' : 'bg-red-500'}`} />
+                {new Date(form.closes_at) > new Date() ? 'Date de fin' : 'Fermé (date)'}
+              </Badge>
+            )}
+          </div>
 
           {/* Options button */}
           <div className="relative">
@@ -85,6 +114,13 @@ export function FormCard({ form, onEdit, onDuplicate, onDelete }: FormCardProps)
                   >
                     <Copy className="h-5 w-5" />
                     Dupliquer
+                  </button>
+                  <button
+                    onClick={(e) => handleActionClick(e, handleExportJson)}
+                    className="flex w-full items-center gap-2 px-4 py-3 text-left text-lg text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition"
+                  >
+                    <Download className="h-5 w-5" />
+                    Exporter (JSON)
                   </button>
                   <div className="my-1 border-t border-border" />
                   <button

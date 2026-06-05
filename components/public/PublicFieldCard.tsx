@@ -71,11 +71,41 @@ export function PublicFieldCard({
     ['file', 'image', 'video'].includes(field.type) &&
     field.validation?.respondent_mode_enabled === true;
 
-  // En mode Créateur uniquement : on rend le contenu média brut sans carte ni titre
+  // En mode Créateur uniquement : on rend le contenu média enveloppé dans une carte avec titre et description
   if (['file', 'image', 'video'].includes(field.type) && !isRespondentUpload) {
     return (
-      <div className={span}>
-        <FieldRenderer field={field} preview={true} mobile={false} />
+      <div
+        className={cn(
+          'field-wrapper min-w-0 rounded-lg border border-border p-5',
+          span,
+          form.theme.field_bg_color ? '' : 'bg-bg-surface'
+        )}
+        style={{ backgroundColor: form.theme.field_bg_color }}
+      >
+        {field.label.fr && (
+          <h3 className="field-label font-display text-lg text-text-primary mb-1">
+            {field.label.fr}
+            {field.required && <span className="text-red-500 ml-1">*</span>}
+          </h3>
+        )}
+        {field.description?.fr && (
+          <p className="field-description text-sm text-text-secondary mb-4 leading-relaxed">
+            {field.description.fr}
+          </p>
+        )}
+        <div className="mt-2">
+          <FieldRenderer
+            field={{
+              ...field,
+              validation: {
+                ...field.validation,
+                show_title: false
+              }
+            }}
+            preview={true}
+            mobile={false}
+          />
+        </div>
       </div>
     );
   }

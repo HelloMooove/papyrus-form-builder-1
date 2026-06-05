@@ -26,9 +26,15 @@ export function useForms(): Form[] {
     };
 
     window.addEventListener('papyrus:forms-changed', refresh);
+    window.addEventListener('papyrus:form-created', refresh);
+    window.addEventListener('papyrus:form-updated', refresh);
+    window.addEventListener('papyrus:form-deleted', refresh);
     window.addEventListener('storage', refresh);
     return () => {
       window.removeEventListener('papyrus:forms-changed', refresh);
+      window.removeEventListener('papyrus:form-created', refresh);
+      window.removeEventListener('papyrus:form-updated', refresh);
+      window.removeEventListener('papyrus:form-deleted', refresh);
       window.removeEventListener('storage', refresh);
     };
   }, []);
@@ -61,9 +67,15 @@ export function useForm(id: string): { form: Form | null; loading: boolean } {
     };
 
     window.addEventListener('papyrus:forms-changed', refresh);
+    window.addEventListener('papyrus:form-created', refresh);
+    window.addEventListener('papyrus:form-updated', refresh);
+    window.addEventListener('papyrus:form-deleted', refresh);
     window.addEventListener('storage', refresh);
     return () => {
       window.removeEventListener('papyrus:forms-changed', refresh);
+      window.removeEventListener('papyrus:form-created', refresh);
+      window.removeEventListener('papyrus:form-updated', refresh);
+      window.removeEventListener('papyrus:form-deleted', refresh);
       window.removeEventListener('storage', refresh);
     };
   }, [id]);

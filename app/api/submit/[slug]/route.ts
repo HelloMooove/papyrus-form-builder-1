@@ -46,6 +46,14 @@ export async function POST(
       );
     }
 
+    // Vérifier si le formulaire est expiré
+    if (form.closes_at && new Date(form.closes_at) < new Date()) {
+      return NextResponse.json(
+        { error: 'Le formulaire est fermé aux réponses (date limite dépassée)' },
+        { status: 403 }
+      );
+    }
+
     // Valider les champs obligatoires
     const requiredFields = form.fields?.filter((f: Field) =>
       f.required &&

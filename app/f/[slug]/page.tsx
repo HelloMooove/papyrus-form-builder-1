@@ -43,6 +43,23 @@ export default async function FormPublicPage({ params }: PageProps) {
     notFound();
   }
 
+  const isExpired = form.closes_at ? new Date(form.closes_at) < new Date() : false;
+
+  if (isExpired) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-bg-base p-6 text-center">
+        <div className="max-w-md space-y-4 rounded-lg border border-border bg-bg-surface p-8 shadow-sm">
+          <h1 className="font-display text-2xl font-semibold text-text-primary">
+            Ce formulaire est fermé
+          </h1>
+          <p className="text-sm text-text-secondary">
+            La date limite pour répondre à ce formulaire ({new Date(form.closes_at!).toLocaleString('fr-FR')}) est dépassée.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (form.status !== 'published') {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-bg-base p-6 text-center">
@@ -63,8 +80,9 @@ export default async function FormPublicPage({ params }: PageProps) {
 
 export async function generateMetadata({ params }: PageProps) {
   const form = await getFormBySlug(params.slug);
+  const isExpired = form?.closes_at ? new Date(form.closes_at) < new Date() : false;
 
-  if (!form || form.status !== 'published') {
+  if (!form || form.status !== 'published' || isExpired) {
     return {
       title: 'Formulaire indisponible',
     };
