@@ -58,9 +58,28 @@
   --sidebar-avatar-size: clamp(26px, 2vw, 32px);
 
   /* Panels de l'éditeur & Spacings fluides */
-  --palette-width: clamp(240px, 18vw, 280px);
-  --settings-width: clamp(280px, 20vw, 340px);
-  --layout-padding: clamp(12px, 3vw, 24px);
+  --palette-width: clamp(200px, 14vw, 240px);
+  --settings-width: clamp(220px, 15vw, 260px);
+  --layout-padding: clamp(10px, 1.5vw, 16px);
+
+  /* Tailles de texte responsives */
+  --text-xs: clamp(10px, 1.4vw, 12px);
+  --text-sm: clamp(11px, 1.6vw, 14px);
+  --text-base: clamp(13px, 1.8vw, 16px);
+  --text-lg: clamp(16px, 2.2vw, 20px);
+  --text-xl: clamp(18px, 2.6vw, 24px);
+  --text-2xl: clamp(22px, 3.2vw, 32px);
+
+  /* Espacements responsives */
+  --spacing-xs: clamp(4px, 1vw, 8px);
+  --spacing-sm: clamp(6px, 1.5vw, 12px);
+  --spacing-md: clamp(8px, 2vw, 16px);
+  --spacing-lg: clamp(12px, 3vw, 24px);
+  --spacing-xl: clamp(16px, 4vw, 32px);
+
+  /* Hauteurs minimales responsives */
+  --min-touch-target: clamp(32px, 5vw, 44px);
+  --input-height: clamp(32px, 4.5vw, 40px);
 }
 
 [data-theme='dark'] {
@@ -105,24 +124,24 @@
   }
   /* Scrollbar discret */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: clamp(8px, 1.2vw, 12px);
+    height: clamp(8px, 1.2vw, 12px);
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: var(--border);
-    border-radius: 6px;
+    border-radius: clamp(4px, 0.6vw, 8px);
   }
   ::-webkit-scrollbar-thumb:hover {
     background: var(--border-strong);
   }
   /* Focus ring cohérent */
   :focus-visible {
-    outline: 2px solid var(--accent-cta);
-    outline-offset: 2px;
-    border-radius: 4px;
+    outline: clamp(1.5px, 0.2vw, 2.5px) solid var(--accent-cta);
+    outline-offset: clamp(1px, 0.15vw, 3px);
+    border-radius: clamp(3px, 0.4vw, 6px);
   }
 }
 

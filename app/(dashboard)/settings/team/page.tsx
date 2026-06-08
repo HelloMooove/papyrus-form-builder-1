@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Mail, Link as LinkIcon, Crown, User, Trash2, Copy, Check, X, Send } from 'lucide-react';
+import { Users, Mail, Link as LinkIcon, Crown, User, Trash2, Copy, Check, X, Send, Edit2 } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -9,6 +10,7 @@ import { EmailAutocomplete, type EmailSuggestion } from '@/components/ui/EmailAu
 import { toast } from '@/components/ui/Toast';
 import type { TeamMemberWithProfile, TeamInvitation, TeamRole } from '@/types';
 import {
+  getTeam,
   getTeamMembers,
   getTeamInvitations,
   createEmailInvitation,
@@ -16,6 +18,7 @@ import {
   deleteInvitation,
   removeMember,
   changeMemberRole,
+  updateTeamName,
   isTeamAdmin
 } from '@/lib/store/team-invitations';
 
@@ -25,6 +28,9 @@ export default function TeamSettingsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState('');
+  const [editingTeamName, setEditingTeamName] = useState(false);
+  const [savingTeamName, setSavingTeamName] = useState(false);
 
   // États pour les modales
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -93,15 +99,17 @@ export default function TeamSettingsPage() {
 
   const loadData = async (teamId: string) => {
     try {
-      const [membersData, invitationsData, adminStatus] = await Promise.all([
+      const [membersData, invitationsData, adminStatus, teamData] = await Promise.all([
         getTeamMembers(teamId),
         getTeamInvitations(teamId),
-        isTeamAdmin(teamId)
+        isTeamAdmin(teamId),
+        getTeam(teamId)
       ]);
 
       setMembers(membersData);
       setInvitations(invitationsData);
       setIsAdmin(adminStatus);
+      setTeamName(teamData.name);
     } catch (error) {
       console.error('Error loading team data:', error);
       toast.error('Impossible de charger les données de l\'équipe');
@@ -179,6 +187,25 @@ export default function TeamSettingsPage() {
     }
   };
 
+  const handleSaveTeamName = async () => {
+    if (!teamName.trim()) {
+      toast.error('Le nom de l\'équipe ne peut pas être vide');
+      return;
+    }
+
+    try {
+      setSavingTeamName(true);
+      await updateTeamName(currentTeamId!, teamName);
+      setEditingTeamName(false);
+      toast.success('Le nom de l\'équipe a été mis à jour');
+    } catch (error: any) {
+      toast.error(error.message || 'Impossible de mettre à jour le nom');
+      setTeamName(teamName);
+    } finally {
+      setSavingTeamName(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
@@ -190,16 +217,66 @@ export default function TeamSettingsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
+    <div className="space-y-6">
+      {/* Infos de l'équipe */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Users className="w-6 h-6 text-var(--mooove-navy)" />
-            <h2 className="text-xl font-display font-medium text-var(--mooove-navy)">
-              Gestion de l'équipe
-            </h2>
+        <h2 className="text-xl font-display font-medium text-mooove-navy">Informations de l'équipe</h2>
+
+        <div className="flex items-center justify-between p-4 border border-papyrus-border rounded-xl bg-papyrus-surface">
+          <div className="flex-1">
+            {editingTeamName ? (
+              <div className="space-y-3">
+                <Input
+                  label="Nom de l'équipe"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  placeholder="Nom de l'équipe"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleSaveTeamName}
+                    disabled={savingTeamName}
+                  >
+                    {savingTeamName ? 'Sauvegarde...' : 'Sauvegarder'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setEditingTeamName(false)}
+                  >
+                    Annuler
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm text-gray-600">Nom de l'équipe</p>
+                <p className="text-lg font-medium text-gray-900">{teamName}</p>
+              </div>
+            )}
           </div>
+
+          {isAdmin && !editingTeamName && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditingTeamName(true)}
+              className="ml-4"
+            >
+              <Edit2 className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Header avec boutons d'invitation */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-display font-medium text-mooove-navy">
+            Gestion de l'équipe
+          </h2>
 
           {isAdmin && (
             <div className="flex gap-2">
@@ -225,20 +302,20 @@ export default function TeamSettingsPage() {
           )}
         </div>
 
-        <p className="text-gray-600">
+        <p className="text-sm text-gray-600">
           {members.length} membre{members.length > 1 ? 's' : ''} • {invitations.filter(inv => inv.status === 'pending').length} invitation{invitations.filter(inv => inv.status === 'pending').length > 1 ? 's' : ''} en attente
         </p>
       </div>
 
       {/* Membres actuels */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-var(--mooove-navy)">Membres</h3>
+        <h3 className="text-base font-medium text-mooove-navy">Membres</h3>
 
         <div className="space-y-3">
           {members.map((member) => (
-            <div key={member.user_id} className="flex items-center justify-between p-4 border border-var(--papyrus-border) rounded-xl bg-white">
+            <div key={member.user_id} className="flex items-center justify-between p-4 border border-papyrus-border rounded-xl bg-papyrus-surface">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-var(--mooove-navy) rounded-full flex items-center justify-center text-white font-medium">
+                <div className="w-10 h-10 bg-mooove-navy rounded-full flex items-center justify-center text-white font-medium text-sm">
                   {member.name ? member.name[0].toUpperCase() : (member.email?.[0] || '?').toUpperCase()}
                 </div>
                 <div>
@@ -261,7 +338,7 @@ export default function TeamSettingsPage() {
                   <select
                     value={member.role}
                     onChange={(e) => handleChangeRole(member.user_id, e.target.value as TeamRole)}
-                    className="px-3 py-1 text-sm border rounded-lg"
+                    className="px-3 py-1 text-sm border border-papyrus-border rounded-lg bg-white"
                   >
                     <option value="member">Membre</option>
                     <option value="admin">Admin</option>
@@ -285,13 +362,13 @@ export default function TeamSettingsPage() {
       {/* Invitations en attente */}
       {invitations.filter(inv => inv.status === 'pending').length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-var(--mooove-navy)">Invitations en attente</h3>
+          <h3 className="text-base font-medium text-mooove-navy">Invitations en attente</h3>
 
           <div className="space-y-3">
             {invitations.filter(inv => inv.status === 'pending').map((invitation) => (
-              <div key={invitation.id} className="flex items-center justify-between p-4 border border-var(--papyrus-border) rounded-xl bg-yellow-50">
+              <div key={invitation.id} className="flex items-center justify-between p-4 border border-papyrus-border rounded-xl bg-amber-50">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center text-white">
+                  <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center text-white text-sm">
                     {invitation.invitation_type === 'email' ? (
                       <Mail className="w-5 h-5" />
                     ) : (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 
@@ -20,6 +21,10 @@ export function DashboardWrapper({
   children
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const pathname = usePathname();
+
+  // Détecter si on est sur la page builder pour supprimer le padding
+  const isBuilderPage = pathname.includes('/edit');
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -33,7 +38,14 @@ export function DashboardWrapper({
       />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="relative flex-1 overflow-y-auto" style={{ padding: 'var(--layout-padding)' }}>{children}</main>
+        <main
+          className={`relative flex-1 ${isBuilderPage ? 'overflow-hidden' : 'overflow-y-auto'}`}
+          style={{
+            padding: isBuilderPage ? '0' : 'var(--layout-padding)'
+          }}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -223,7 +223,7 @@ function Header({
           {form.status === 'closed' && <Badge variant="closed">Clos</Badge>}
         </div>
         <p className="papyrus-meta mt-1 text-sm not-italic flex flex-wrap items-center gap-1.5">
-          <span>i. /{form.slug}</span>
+          <span>/{form.slug}</span>
           {workspaceName && (
             <>
               <span>·</span>

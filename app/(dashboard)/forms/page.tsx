@@ -418,17 +418,22 @@ export default function FormsListPage() {
           <h1 className="font-display text-4xl">
             {workspaceName ? `Formulaires — ${workspaceName}` : 'Formulaires'}
           </h1>
-          <p className="papyrus-meta mt-1 text-sm not-italic">
-            i. {userForms.length} formulaire{userForms.length > 1 ? 's' : ''} au total dans cet espace
-          </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" iconLeft={<Upload className="h-4 w-4" />} onClick={handleImportClick}>
+          <button
+            onClick={handleImportClick}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-surface px-2.5 py-1.5 text-xs font-medium text-text-primary transition hover:bg-bg-elevated hover:border-border-strong"
+          >
+            <Upload className="h-3.5 w-3.5" />
             Importer (JSON)
-          </Button>
-          <Button variant="cta" iconLeft={<Plus className="h-4 w-4" />} onClick={handleNew}>
+          </button>
+          <button
+            onClick={handleNew}
+            className="inline-flex items-center gap-1.5 rounded-md border border-mooove-cyan bg-mooove-cyan px-2.5 py-1.5 text-xs font-medium text-black transition hover:bg-mooove-cyan/90"
+          >
+            <Plus className="h-3.5 w-3.5" />
             Nouveau formulaire
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -747,9 +752,9 @@ function FormsTable({
                 )}
               </td>
               <td className="px-4 py-3">
-                {f.status === 'published' && <Badge variant="published">Publié</Badge>}
-                {f.status === 'draft' && <Badge variant="draft">Brouillon</Badge>}
-                {f.status === 'closed' && <Badge variant="closed">Clos</Badge>}
+                {f.status === 'published' && <Badge variant="published" className="text-xs px-2 py-1">Publié</Badge>}
+                {f.status === 'draft' && <Badge variant="draft" className="text-xs px-2 py-1">Brouillon</Badge>}
+                {f.status === 'closed' && <Badge variant="closed" className="text-xs px-2 py-1">Clos</Badge>}
               </td>
               <td className="px-4 py-3 text-sm capitalize text-text-secondary">{f.display_mode}</td>
               <td className="px-4 py-3 text-sm text-text-secondary">
@@ -943,9 +948,13 @@ function EmptyState({
       <FileText className="mx-auto h-10 w-10 text-text-tertiary" />
       <h3 className="mt-4 font-display text-xl">Aucun formulaire pour l&apos;instant</h3>
       <p className="papyrus-meta mt-1 text-sm">i. Commencez par créer votre premier Papyrus</p>
-      <Button variant="cta" className="mt-5" iconLeft={<Plus className="h-4 w-4" />} onClick={onCreate}>
+      <button
+        onClick={onCreate}
+        className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-mooove-cyan bg-mooove-cyan px-2.5 py-1.5 text-xs font-medium text-black transition hover:bg-mooove-cyan/90"
+      >
+        <Plus className="h-3.5 w-3.5" />
         Créer un formulaire
-      </Button>
+      </button>
     </div>
   );
 }

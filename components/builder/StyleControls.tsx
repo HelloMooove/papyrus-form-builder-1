@@ -41,17 +41,17 @@ export function StyleControls({ style, onChange }: Props) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <Section title="Couleur du titre">
-        <div className="grid grid-cols-8 gap-1.5">
+        <div className="grid grid-cols-8 gap-0.5">
           {PRESET_COLORS.map((c) => (
             <button
               key={c}
               type="button"
               onClick={() => patch({ label_color: c })}
               className={cn(
-                'h-7 w-7 rounded-md border transition',
-                style.label_color === c ? 'ring-2 ring-accent ring-offset-1 ring-offset-bg-surface' : 'border-border'
+                'h-4 w-4 rounded border transition',
+                style.label_color === c ? 'ring-1 ring-accent ring-offset-1 ring-offset-bg-surface' : 'border-border'
               )}
               style={{ backgroundColor: c }}
               aria-label={`Couleur ${c}`}
@@ -75,7 +75,7 @@ export function StyleControls({ style, onChange }: Props) {
       </Section>
 
       <Section title="Police">
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-1">
           {FONTS.map((f) => {
             // Le défaut conceptuel est désormais Aktiv Grotesk (sans). On garde 'display'
             // comme alias historique mappant aussi au sans pour ne pas casser les forms existants.
@@ -88,13 +88,13 @@ export function StyleControls({ style, onChange }: Props) {
                 type="button"
                 onClick={() => patch({ font_family: f.value })}
                 className={cn(
-                  'flex flex-col items-center gap-1 rounded-md border px-2 py-2 transition',
+                  'flex flex-col items-center gap-0.5 rounded border px-1.5 py-1.5 transition',
                   active ? 'border-accent bg-accent/5' : 'border-border-strong hover:border-accent'
                 )}
               >
                 <span
                   className={cn(
-                    'text-2xl leading-none',
+                    'text-lg leading-none',
                     f.value === 'sans'
                       ? 'font-sans'
                       : f.value === 'serif'
@@ -104,7 +104,7 @@ export function StyleControls({ style, onChange }: Props) {
                 >
                   {f.preview}
                 </span>
-                <span className="text-[10px] text-text-tertiary">{f.label}</span>
+                <span className="text-[9px] text-text-tertiary">{f.label}</span>
               </button>
             );
           })}
@@ -112,7 +112,7 @@ export function StyleControls({ style, onChange }: Props) {
       </Section>
 
       <Section title="Taille">
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-4 gap-1">
           {SIZES.map((s) => {
             const active = (style.label_size ?? 'lg') === s.value;
             return (
@@ -121,7 +121,7 @@ export function StyleControls({ style, onChange }: Props) {
                 type="button"
                 onClick={() => patch({ label_size: s.value })}
                 className={cn(
-                  'rounded-md border py-2 text-sm font-medium transition',
+                  'rounded border py-1.5 text-xs font-medium transition',
                   active
                     ? 'border-accent bg-accent/5 text-text-primary'
                     : 'border-border-strong text-text-secondary hover:border-accent'
@@ -135,7 +135,7 @@ export function StyleControls({ style, onChange }: Props) {
       </Section>
 
       <Section title="Alignement & emphase">
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-1">
           {(
             [
               { value: 'left' as TextAlign, icon: AlignLeft },
@@ -150,44 +150,44 @@ export function StyleControls({ style, onChange }: Props) {
                 type="button"
                 onClick={() => patch({ label_align: value })}
                 className={cn(
-                  'flex items-center justify-center rounded-md border py-2 transition',
+                  'flex items-center justify-center rounded border py-1.5 transition',
                   active
                     ? 'border-accent bg-accent/5 text-text-primary'
                     : 'border-border-strong text-text-secondary hover:border-accent'
                 )}
                 aria-label={value}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-3.5 w-3.5" />
               </button>
             );
           })}
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 gap-1">
           <button
             type="button"
             onClick={() =>
               patch({ label_weight: style.label_weight === 'bold' ? 'normal' : ('bold' as LabelWeight) })
             }
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-md border py-2 text-sm transition',
+              'flex items-center justify-center gap-1 rounded border py-1.5 text-xs transition',
               style.label_weight === 'bold'
                 ? 'border-accent bg-accent/5 text-text-primary'
                 : 'border-border-strong text-text-secondary hover:border-accent'
             )}
           >
-            <Bold className="h-4 w-4" /> Gras
+            <Bold className="h-3.5 w-3.5" /> Gras
           </button>
           <button
             type="button"
             onClick={() => patch({ label_italic: !style.label_italic })}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-md border py-2 text-sm transition',
+              'flex items-center justify-center gap-1 rounded border py-1.5 text-xs transition',
               style.label_italic
                 ? 'border-accent bg-accent/5 text-text-primary'
                 : 'border-border-strong text-text-secondary hover:border-accent'
             )}
           >
-            <Italic className="h-4 w-4" /> Italique
+            <Italic className="h-3.5 w-3.5" /> Italique
           </button>
         </div>
       </Section>
@@ -197,9 +197,9 @@ export function StyleControls({ style, onChange }: Props) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2 border-t border-dashed border-border pt-5 first:border-t-0 first:pt-0">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">{title}</h3>
-      <div className="space-y-2">{children}</div>
+    <div className="space-y-1.5 border-t border-dashed border-border pt-3 first:border-t-0 first:pt-0">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">{title}</h3>
+      <div className="space-y-1.5">{children}</div>
     </div>
   );
 }

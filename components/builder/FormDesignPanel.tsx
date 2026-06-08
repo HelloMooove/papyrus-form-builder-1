@@ -7,8 +7,6 @@ import type {
   DisplayMode,
   Form,
   FormTheme,
-  BannerFit,
-  BannerPosition,
   FieldStyle,
   ScoreLevel
 } from '@/types';
@@ -54,7 +52,7 @@ export function FormDesignPanel({ form, onChange, onFormChange, onModeChange }: 
               {
                 value: 'sections' as DisplayMode,
                 label: 'Pages',
-                hint: 'Une section = une page (défaut)'
+                hint: 'Une section = une page'
               },
               {
                 value: 'scroll' as DisplayMode,
@@ -64,7 +62,7 @@ export function FormDesignPanel({ form, onChange, onFormChange, onModeChange }: 
               {
                 value: 'typeform' as DisplayMode,
                 label: 'Une à une',
-                hint: 'Plein écran, façon Typeform'
+                hint: 'Question par question'
               }
             ]
           ).map((m) => {
@@ -152,7 +150,6 @@ function SettingsTab({ form, onFormChange }: { form: Form; onFormChange: (patch:
           checked={form.scoring_enabled ?? false}
           onChange={(scoring_enabled) => onFormChange({ scoring_enabled })}
           label="Activer le système de points"
-          description="Permet d'attribuer des points aux réponses pour calculer un score de maturité."
         />
         {form.scoring_enabled && (
           <>
@@ -162,28 +159,32 @@ function SettingsTab({ form, onFormChange }: { form: Form; onFormChange: (patch:
               label="Afficher le score final au répondant"
               description="Le répondant verra son score total à la fin du formulaire."
             />
-            <div className="mt-3 gap-2 space-y-2">
-              <div>
-                <label className="block text-xs text-text-secondary mb-1" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Nom du score
-                </label>
-                <Input
-                  value={form.theme.score_label ?? ''}
-                  onChange={(e) => onFormChange({ theme: { ...form.theme, score_label: e.target.value } })}
-                  placeholder="Score"
-                />
+            {form.show_score_to_respondent && (
+              <div className="mt-2 gap-1.5 space-y-1.5">
+                <div>
+                  <label className="block text-[10px] text-text-secondary mb-0.5">
+                    Nom du score
+                  </label>
+                  <input
+                    value={form.theme.score_label ?? ''}
+                    onChange={(e) => onFormChange({ theme: { ...form.theme, score_label: e.target.value } })}
+                    placeholder="Score"
+                    className="h-7 w-full rounded border border-border bg-bg-surface px-2 text-[11px] text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-text-secondary mb-0.5">
+                    Description
+                  </label>
+                  <input
+                    value={form.theme.score_description ?? ''}
+                    onChange={(e) => onFormChange({ theme: { ...form.theme, score_description: e.target.value } })}
+                    placeholder="Basé sur vos réponses à ce formulaire"
+                    className="h-7 w-full rounded border border-border bg-bg-surface px-2 text-[11px] text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Description
-                </label>
-                <Input
-                  value={form.theme.score_description ?? ''}
-                  onChange={(e) => onFormChange({ theme: { ...form.theme, score_description: e.target.value } })}
-                  placeholder="Basé sur vos réponses à ce formulaire"
-                />
-              </div>
-            </div>
+            )}
 
             {/* Éditeur de niveaux de score */}
             <div className="mt-4 border-t border-dashed border-border pt-4 space-y-3">
@@ -253,18 +254,18 @@ function SettingsTab({ form, onFormChange }: { form: Form; onFormChange: (patch:
                   };
 
                   return (
-                    <div key={idx} className="rounded-lg border border-border p-3 space-y-2 bg-bg-base/30 relative">
+                    <div key={idx} className="rounded border border-border p-2 space-y-1.5 bg-bg-base/30 relative">
                       <button
                         type="button"
                         onClick={deleteLevel}
-                        className="absolute top-2.5 right-2.5 text-text-tertiary hover:text-danger transition cursor-pointer"
+                        className="absolute top-1.5 right-1.5 text-text-tertiary hover:text-danger transition cursor-pointer"
                         title="Supprimer ce niveau"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-3 w-3" />
                       </button>
 
-                      <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
-                        <label className="text-[11px] text-text-secondary">Min %</label>
+                      <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
+                        <label className="text-[10px] text-text-secondary">Min %</label>
                         <input
                           type="number"
                           min="0"
@@ -274,35 +275,35 @@ function SettingsTab({ form, onFormChange }: { form: Form; onFormChange: (patch:
                             const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
                             updateLevel({ minPercent: val });
                           }}
-                          className="h-8 rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none w-20"
+                          className="h-6 rounded border border-border bg-bg-surface px-1.5 text-[11px] focus:border-accent focus:outline-none w-16"
                         />
                       </div>
 
-                      <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
-                        <label className="text-[11px] text-text-secondary">Titre</label>
+                      <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
+                        <label className="text-[10px] text-text-secondary">Titre</label>
                         <input
                           type="text"
                           value={level.title}
                           onChange={(e) => updateLevel({ title: e.target.value })}
-                          className="h-8 rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none w-full"
+                          className="h-6 rounded border border-border bg-bg-surface px-1.5 text-[11px] focus:border-accent focus:outline-none w-full"
                         />
                       </div>
 
-                      <div className="grid grid-cols-[80px_1fr] gap-2 items-start">
-                        <label className="text-[11px] text-text-secondary pt-1.5">Description</label>
+                      <div className="grid grid-cols-[60px_1fr] gap-1.5 items-start">
+                        <label className="text-[10px] text-text-secondary pt-1">Description</label>
                         <textarea
                           value={level.description}
                           onChange={(e) => updateLevel({ description: e.target.value })}
-                          className="h-16 rounded-md border border-border bg-bg-surface p-2 text-xs focus:border-accent focus:outline-none w-full resize-none leading-relaxed"
+                          className="h-12 rounded border border-border bg-bg-surface p-1.5 text-[11px] focus:border-accent focus:outline-none w-full resize-none leading-tight"
                         />
                       </div>
 
-                      <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
-                        <label className="text-[11px] text-text-secondary">Couleur</label>
+                      <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
+                        <label className="text-[10px] text-text-secondary">Couleur</label>
                         <select
                           value={level.color}
                           onChange={(e) => updateLevel({ color: e.target.value as any })}
-                          className="h-8 rounded-md border border-border bg-bg-surface px-2 text-xs focus:border-accent focus:outline-none w-32"
+                          className="h-6 rounded border border-border bg-bg-surface px-1.5 text-[11px] focus:border-accent focus:outline-none w-28"
                         >
                           <option value="green">Vert (Excellent)</option>
                           <option value="blue">Bleu (Bien)</option>
@@ -400,7 +401,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       type="button"
       onClick={onClick}
       className={cn(
-        'flex-1 border-b-2 px-3 py-2.5 text-xs font-medium uppercase tracking-wide transition',
+        'flex-1 border-b-2 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide transition',
         active ? 'border-accent text-text-primary' : 'border-transparent text-text-tertiary hover:text-text-secondary'
       )}
     >
@@ -521,7 +522,7 @@ function BackgroundTab({ theme, onChange }: { theme: FormTheme; onChange: (patch
               value={theme.bg_color ?? theme.bg ?? ''}
               onChange={(e) => onChange({ bg_color: e.target.value, bg: e.target.value })}
               placeholder="#F7F0DC"
-              className="flex-1 font-mono text-xs"
+              className="flex-1 font-mono text-xs h-9 px-3"
             />
           </div>
         </div>
@@ -543,7 +544,7 @@ function BackgroundTab({ theme, onChange }: { theme: FormTheme; onChange: (patch
                 value={theme.bg_gradient_from ?? ''}
                 onChange={(e) => onChange({ bg_gradient_from: e.target.value })}
                 placeholder="#F7F0DC"
-                className="flex-1 font-mono text-xs"
+                className="flex-1 font-mono text-xs h-9 px-3"
               />
             </div>
           </div>
@@ -560,7 +561,7 @@ function BackgroundTab({ theme, onChange }: { theme: FormTheme; onChange: (patch
                 value={theme.bg_gradient_to ?? ''}
                 onChange={(e) => onChange({ bg_gradient_to: e.target.value })}
                 placeholder="#EFF9FE"
-                className="flex-1 font-mono text-xs"
+                className="flex-1 font-mono text-xs h-9 px-3"
               />
             </div>
           </div>
@@ -637,6 +638,7 @@ function BackgroundTab({ theme, onChange }: { theme: FormTheme; onChange: (patch
             value={theme.bg_image_url?.startsWith('data:') ? '' : theme.bg_image_url ?? ''}
             onChange={(e) => onChange({ bg_image_url: e.target.value || undefined })}
             placeholder="https://…"
+            className="h-9 px-3 text-xs"
           />
 
           <div>
@@ -710,7 +712,7 @@ function BackgroundTab({ theme, onChange }: { theme: FormTheme; onChange: (patch
             value={theme.field_bg_color ?? ''}
             onChange={(e) => onChange({ field_bg_color: e.target.value || undefined })}
             placeholder="par défaut"
-            className="flex-1 font-mono text-xs"
+            className="flex-1 font-mono text-xs h-9 px-3"
           />
         </div>
       </div>
@@ -739,21 +741,12 @@ function FormStyleTab({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-md border border-mooove-cyan/30 bg-mooove-cyan/5 px-3 py-2 text-xs text-text-secondary">
+      <div className="rounded-md border border-mooove-cyan/30 bg-mooove-cyan/5 px-2.5 py-2 text-[11px] text-text-secondary">
         Le style choisi ici s&apos;applique à <strong>toutes les questions</strong> du formulaire. Vous pouvez toujours
         le surcharger champ par champ via l&apos;onglet « Style » d&apos;un champ sélectionné.
       </div>
 
       <StyleControls style={current} onChange={handleChange} />
-
-      <div className="space-y-3 border-t border-dashed border-border pt-5">
-        <Switch
-          checked={theme.fields_icons_enabled ?? false}
-          onChange={(v) => onChange({ fields_icons_enabled: v })}
-          label="Afficher les icônes"
-          description="Ajoute une icône à gauche de chaque question"
-        />
-      </div>
 
       {hasStyle && (
         <button
@@ -810,7 +803,7 @@ function AccentTab({ theme, onChange }: { theme: FormTheme; onChange: (patch: Pa
               )}
             >
               <span
-                className="h-7 w-7 shrink-0 rounded-md border border-border"
+                className="h-5 w-5 shrink-0 rounded border border-border"
                 style={{ backgroundColor: c.value }}
               />
               <span className="flex-1">
@@ -830,7 +823,7 @@ function AccentTab({ theme, onChange }: { theme: FormTheme; onChange: (patch: Pa
         </label>
         
         {/* Palette rapide */}
-        <div className="grid grid-cols-8 gap-1.5 mb-3">
+        <div className="grid grid-cols-8 gap-0.5 mb-2">
           {PRESET_ACCENTS.map((c) => {
             const active = theme.accent === c;
             return (
@@ -839,8 +832,8 @@ function AccentTab({ theme, onChange }: { theme: FormTheme; onChange: (patch: Pa
                 type="button"
                 onClick={() => onChange({ accent: c })}
                 className={cn(
-                  'h-7 w-7 rounded-md border transition',
-                  active ? 'ring-2 ring-accent ring-offset-1 ring-offset-bg-surface' : 'border-border'
+                  'h-4 w-4 rounded border transition',
+                  active ? 'ring-1 ring-accent ring-offset-1 ring-offset-bg-surface' : 'border-border'
                 )}
                 style={{ backgroundColor: c }}
                 aria-label={`Couleur ${c}`}
@@ -861,7 +854,7 @@ function AccentTab({ theme, onChange }: { theme: FormTheme; onChange: (patch: Pa
             value={theme.accent ?? ''}
             onChange={(e) => onChange({ accent: e.target.value })}
             placeholder="#052139"
-            className="flex-1 font-mono text-xs"
+            className="flex-1 font-mono text-xs h-9 px-3"
           />
         </div>
       </div>

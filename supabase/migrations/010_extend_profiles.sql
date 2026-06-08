@@ -7,7 +7,6 @@
 alter table public.profiles
   add column if not exists first_name text,
   add column if not exists last_name text,
-  add column if not exists avatar_url text,
   add column if not exists updated_at timestamptz default now();
 
 -- Policy pour permettre aux utilisateurs de modifier leur propre profil

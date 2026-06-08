@@ -25,7 +25,8 @@ import { getWorkspaces } from '@/lib/store/local-workspaces';
 import { cloneTemplate, listTemplatesByScope } from '@/lib/store/templates';
 import { FAVORITES_EVENT, listFavorites } from '@/lib/store/favorites';
 import { toast } from '@/components/ui/Toast';
-import type { Form, Workspace } from '@/types';
+import { getUserProfile } from '@/lib/store/team-invitations';
+import type { Form, Workspace, UserProfile } from '@/types';
 
 export default function DashboardHome() {
   const forms = useForms();
@@ -36,6 +37,7 @@ export default function DashboardHome() {
   const [workspacesList, setWorkspacesList] = useState<Workspace[]>([]);
   const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   // Synchro favoris
   useEffect(() => {
@@ -87,6 +89,19 @@ export default function DashboardHome() {
     };
     loadWorkspacesData();
   }, [isLocal]);
+
+  // Charger le profil utilisateur pour récupérer le prénom
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      try {
+        const profile = await getUserProfile();
+        setUserProfile(profile);
+      } catch (err) {
+        console.error('Failed to load user profile:', err);
+      }
+    };
+    loadUserProfile();
+  }, []);
 
   const getWorkspaceName = (form: Form) => {
     const targetId = isLocal ? form.workspace_id : form.team_id;
@@ -157,14 +172,17 @@ export default function DashboardHome() {
       {/* Header */}
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="font-display text-4xl">Bonjour.</h1>
-          <p className="papyrus-meta mt-1 text-sm not-italic">
-            i. Voici l&apos;état de vos formulaires aujourd&apos;hui
-          </p>
+          <h1 className="font-display text-4xl">
+            {userProfile?.first_name ? `Bonjour ${userProfile.first_name}.` : 'Bonjour.'}
+          </h1>
         </div>
-        <Button variant="cta" iconLeft={<Plus className="h-4 w-4" />} onClick={handleNew}>
+        <button
+          onClick={handleNew}
+          className="inline-flex items-center gap-1.5 rounded-md border border-mooove-cyan bg-mooove-cyan px-3 py-2 text-sm font-medium text-black transition hover:bg-mooove-cyan/90"
+        >
+          <Plus className="h-4 w-4" />
           Nouveau formulaire
-        </Button>
+        </button>
       </div>
 
       {/* Stats */}
@@ -269,7 +287,7 @@ export default function DashboardHome() {
             <p className="text-sm text-text-secondary font-body">
               Dans quel espace de travail souhaitez-vous créer ce formulaire ?
             </p>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            <div className="space-y-2 max-h-80 overflow-y-auto">
               {workspacesList.map((ws) => {
                 const isSelected = selectedWorkspaceId === ws.id;
                 return (
@@ -415,9 +433,9 @@ function FavoriteTemplateCard({ template, onUse }: { template: Form; onUse: () =
       </div>
       <div className="font-display text-base leading-tight text-text-primary">{template.title}</div>
       {template.template_category && (
-        <div className="papyrus-meta text-[11px]">i. {template.template_category}</div>
+        <div className="papyrus-meta text-xs">i. {template.template_category}</div>
       )}
-      <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-accent opacity-0 transition group-hover:opacity-100">
+      <div className="mt-1 inline-flex items-center gap-1 text-xs text-accent opacity-0 transition group-hover:opacity-100">
         Utiliser <ArrowRight className="h-3 w-3" />
       </div>
     </button>
@@ -448,17 +466,21 @@ function EmptyForms({ onCreate }: { onCreate: () => void }) {
       <FileText className="mx-auto h-10 w-10 text-text-tertiary" />
       <h3 className="mt-4 font-display text-xl">Aucun formulaire pour l&apos;instant</h3>
       <p className="papyrus-meta mt-1 text-sm">i. Commencez par créer votre premier Papyrus</p>
-      <Button variant="cta" className="mt-5" iconLeft={<Plus className="h-4 w-4" />} onClick={onCreate}>
+      <button
+        onClick={onCreate}
+        className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-mooove-cyan bg-mooove-cyan px-3 py-2 text-sm font-medium text-black transition hover:bg-mooove-cyan/90"
+      >
+        <Plus className="h-4 w-4" />
         Créer un formulaire
-      </Button>
+      </button>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === 'published') return <Badge variant="published">Publié</Badge>;
-  if (status === 'closed') return <Badge variant="closed">Clos</Badge>;
-  return <Badge variant="draft">Brouillon</Badge>;
+  if (status === 'published') return <Badge variant="published" className="text-xs px-2 py-1">Publié</Badge>;
+  if (status === 'closed') return <Badge variant="closed" className="text-xs px-2 py-1">Clos</Badge>;
+  return <Badge variant="draft" className="text-xs px-2 py-1">Brouillon</Badge>;
 }
 
 /** Résout un nom d'icône Lucide en composant. */

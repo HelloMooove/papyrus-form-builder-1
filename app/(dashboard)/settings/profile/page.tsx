@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { User, Mail, Lock, Save, Eye, EyeOff, Upload, Camera } from 'lucide-react';
+import { User, Mail, Lock, Save, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toast';
-import { cn } from '@/lib/utils';
 import type { UserProfile } from '@/types';
 import {
   getUserProfile,
@@ -16,7 +15,6 @@ import {
 } from '@/lib/store/team-invitations';
 
 export default function ProfileSettingsPage() {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -50,18 +48,13 @@ export default function ProfileSettingsPage() {
       setLoading(true);
       const profileData = await getUserProfile();
       if (profileData) {
-        setProfile(profileData);
         setFirstName(profileData.first_name || '');
         setLastName(profileData.last_name || '');
         setEmail(profileData.email);
       }
     } catch (error) {
       console.error('Error loading profile:', error);
-      toast({
-        title: 'Erreur',
-        description: 'Impossible de charger le profil',
-        variant: 'error'
-      });
+      toast.error('Impossible de charger le profil');
     } finally {
       setLoading(false);
     }
@@ -76,17 +69,9 @@ export default function ProfileSettingsPage() {
       });
 
       await loadProfile();
-      toast({
-        title: 'Profil mis à jour',
-        description: 'Vos informations ont été sauvegardées',
-        variant: 'success'
-      });
+      toast.success('Vos informations ont été sauvegardées');
     } catch (error: any) {
-      toast({
-        title: 'Erreur',
-        description: error.message || 'Impossible de sauvegarder le profil',
-        variant: 'error'
-      });
+      toast.error(error.message || 'Impossible de sauvegarder le profil');
     } finally {
       setSaving(false);
     }
@@ -94,20 +79,12 @@ export default function ProfileSettingsPage() {
 
   const handleChangePassword = async () => {
     if (newPassword !== confirmPassword) {
-      toast({
-        title: 'Erreur',
-        description: 'Les mots de passe ne correspondent pas',
-        variant: 'error'
-      });
+      toast.error('Les mots de passe ne correspondent pas');
       return;
     }
 
     if (newPassword.length < 8) {
-      toast({
-        title: 'Erreur',
-        description: 'Le mot de passe doit contenir au moins 8 caractères',
-        variant: 'error'
-      });
+      toast.error('Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
 
@@ -117,27 +94,15 @@ export default function ProfileSettingsPage() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      toast({
-        title: 'Mot de passe modifié',
-        description: 'Votre mot de passe a été mis à jour',
-        variant: 'success'
-      });
+      toast.success('Votre mot de passe a été mis à jour');
     } catch (error: any) {
-      toast({
-        title: 'Erreur',
-        description: error.message || 'Impossible de modifier le mot de passe',
-        variant: 'error'
-      });
+      toast.error(error.message || 'Impossible de modifier le mot de passe');
     }
   };
 
   const handleChangeEmail = async () => {
     if (!newEmail.includes('@')) {
-      toast({
-        title: 'Erreur',
-        description: 'Veuillez saisir une adresse email valide',
-        variant: 'error'
-      });
+      toast.error('Veuillez saisir une adresse email valide');
       return;
     }
 
@@ -146,17 +111,9 @@ export default function ProfileSettingsPage() {
       setShowEmailModal(false);
       setNewEmail('');
       setEmailPassword('');
-      toast({
-        title: 'Email envoyé',
-        description: 'Un email de confirmation a été envoyé à votre nouvelle adresse',
-        variant: 'success'
-      });
+      toast.success('Un email de confirmation a été envoyé à votre nouvelle adresse');
     } catch (error: any) {
-      toast({
-        title: 'Erreur',
-        description: error.message || 'Impossible de modifier l\'email',
-        variant: 'error'
-      });
+      toast.error(error.message || 'Impossible de modifier l\'email');
     }
   };
 
@@ -178,45 +135,10 @@ export default function ProfileSettingsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <User className="w-6 h-6 text-var(--mooove-navy)" />
-          <h2 className="text-xl font-display font-medium text-var(--mooove-navy)">
-            Mon profil
-          </h2>
-        </div>
-        <p className="text-gray-600">
-          Gérez vos informations personnelles et vos préférences de sécurité.
-        </p>
-      </div>
-
-      {/* Photo de profil */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium text-var(--mooove-navy)">Photo de profil</h3>
-        <div className="flex items-center gap-4">
-          <div className="w-20 h-20 bg-var(--mooove-navy) rounded-full flex items-center justify-center text-white text-2xl font-medium">
-            {firstName && lastName ?
-              `${firstName[0]}${lastName[0]}`.toUpperCase() :
-              email[0].toUpperCase()
-            }
-          </div>
-          <div>
-            <Button variant="secondary" size="sm" className="flex items-center gap-2">
-              <Camera className="w-4 h-4" />
-              Changer la photo
-            </Button>
-            <p className="text-xs text-gray-500 mt-1">
-              JPG, PNG ou GIF. 5MB maximum.
-            </p>
-          </div>
-        </div>
-      </div>
-
+    <div className="space-y-6">
       {/* Informations personnelles */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-var(--mooove-navy)">Informations personnelles</h3>
+        <h2 className="text-xl font-display font-medium text-mooove-navy">Informations personnelles</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
@@ -249,11 +171,11 @@ export default function ProfileSettingsPage() {
 
       {/* Sécurité du compte */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-var(--mooove-navy)">Sécurité</h3>
+        <h2 className="text-xl font-display font-medium text-mooove-navy">Sécurité</h2>
 
         <div className="space-y-3">
           {/* Email */}
-          <div className="flex items-center justify-between p-4 border border-var(--papyrus-border) rounded-xl bg-white">
+          <div className="flex items-center justify-between p-4 border border-papyrus-border rounded-xl bg-papyrus-surface">
             <div className="flex items-center gap-3">
               <Mail className="w-5 h-5 text-gray-500" />
               <div>
@@ -271,7 +193,7 @@ export default function ProfileSettingsPage() {
           </div>
 
           {/* Mot de passe */}
-          <div className="flex items-center justify-between p-4 border border-var(--papyrus-border) rounded-xl bg-white">
+          <div className="flex items-center justify-between p-4 border border-papyrus-border rounded-xl bg-papyrus-surface">
             <div className="flex items-center gap-3">
               <Lock className="w-5 h-5 text-gray-500" />
               <div>

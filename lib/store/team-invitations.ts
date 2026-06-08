@@ -389,3 +389,39 @@ export async function changeEmail(newEmail: string): Promise<void> {
 
   if (error) throw error;
 }
+
+/**
+ * Récupère les infos complètes d'une équipe
+ */
+export async function getTeam(teamId: string) {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('id', teamId)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Met à jour le nom de l'équipe (admin seulement)
+ */
+export async function updateTeamName(teamId: string, newName: string): Promise<void> {
+  const supabase = createClient();
+
+  // Vérifier les permissions
+  const canUpdate = await isTeamAdmin(teamId);
+  if (!canUpdate) {
+    throw new Error('Only team admins can update team name');
+  }
+
+  const { error } = await supabase
+    .from('teams')
+    .update({ name: newName })
+    .eq('id', teamId);
+
+  if (error) throw error;
+}

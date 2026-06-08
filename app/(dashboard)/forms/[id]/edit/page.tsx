@@ -14,7 +14,6 @@ import {
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import { ArrowLeft, Eye, Send } from 'lucide-react';
 
-import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import {
   updateForm,
@@ -601,16 +600,12 @@ export default function BuilderPage() {
   }
 
   return (
-    <div className="-mx-8 -my-6 flex h-[calc(100vh-3.5rem)] flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Toolbar */}
       <div
-        className="flex items-center justify-between bg-bg-surface px-6 overflow-hidden transition-all duration-300"
+        className="flex items-center justify-between bg-bg-surface px-6 shrink-0 border-b border-border"
         style={{
-          height: isPreviewOpen ? '0px' : '3.5rem',
-          minHeight: isPreviewOpen ? '0px' : '3.5rem',
-          paddingTop: isPreviewOpen ? '0px' : undefined,
-          paddingBottom: isPreviewOpen ? '0px' : undefined,
-          borderBottom: isPreviewOpen ? 'none' : '1px solid var(--border)',
+          height: '3.5rem',
         }}
       >
         <div className="flex items-center gap-3">
@@ -632,7 +627,7 @@ export default function BuilderPage() {
               }}
               className="min-w-[200px] bg-transparent font-display text-lg outline-none transition focus:border-b focus:border-accent pr-12"
             />
-            {titleDraft.length > 0 && (
+            {titleDraft.length > LIMITS.FORM_TITLE_MAX * 0.7 && (
               <span className={cn(
                 "absolute right-2 text-[10px] font-mono pointer-events-none select-none",
                 titleDraft.length > LIMITS.FORM_TITLE_MAX * 0.8 ? "text-red-500 font-semibold" : "text-text-tertiary"
@@ -641,17 +636,13 @@ export default function BuilderPage() {
               </span>
             )}
           </div>
-          {form.status === 'draft' && <Badge variant="draft">Brouillon</Badge>}
-          {form.status === 'published' && <Badge variant="published">Publié</Badge>}
-          <span className="papyrus-meta ml-2 text-xs flex items-center gap-1.5">
-            <span>i. {fields.length} champ{fields.length > 1 ? 's' : ''}</span>
-            {workspaceName && (
-              <>
-                <span>·</span>
-                <span className="font-semibold text-text-secondary">{workspaceName}</span>
-              </>
-            )}
-          </span>
+          {workspaceName && (
+            <span className="papyrus-meta ml-2 text-xs flex items-center gap-1.5">
+              <span className="font-semibold text-text-secondary">{workspaceName}</span>
+            </span>
+          )}
+          {form.status === 'draft' && <Badge variant="draft" className="text-xs px-2 py-1">Brouillon</Badge>}
+          {form.status === 'published' && <Badge variant="published" className="text-xs px-2 py-1">Publié</Badge>}
           <span className={cn(
             "ml-3 text-[11px] font-medium transition-all duration-300 flex items-center gap-1.5",
             saveStatus === 'saved' ? "text-green-600 dark:text-green-400 opacity-80" :
@@ -681,99 +672,94 @@ export default function BuilderPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsPreviewOpen(true)}
-            style={{
-              border: '1.5px solid #2AC2DE',
-              color: '#052139',
-              background: 'transparent',
-              borderRadius: '8px',
-              padding: '5px 14px',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
+            className="inline-flex items-center gap-1.5 rounded-md border border-mooove-cyan bg-bg-surface px-2.5 py-1.5 text-xs font-medium text-black transition hover:bg-bg-elevated"
           >
-            <Eye size={14} /> Aperçu
+            <Eye className="h-3.5 w-3.5" />
+            Aperçu
           </button>
-          <Button variant="cta" size="sm" iconLeft={<Send className="h-4 w-4" />} onClick={handlePublish}>
+          <button
+            onClick={handlePublish}
+            className="inline-flex items-center gap-1.5 rounded-md border border-mooove-cyan bg-mooove-cyan px-2.5 py-1.5 text-xs font-medium text-black transition hover:bg-mooove-cyan/90"
+          >
+            <Send className="h-3.5 w-3.5" />
             {form.status === 'published' ? 'Dépublier' : 'Publier'}
-          </Button>
+          </button>
         </div>
       </div>
 
-      {/* Conteneur des vues avec transition glissante */}
-      <div className="relative flex-1 overflow-hidden" id="preview-container">
-        {/* Vue éditeur */}
+      {/* Vue éditeur */}
+      <div
+        className="flex-1 h-full flex overflow-hidden"
+        style={{
+          ...getBackgroundStyle(form.theme),
+        }}
+      >
+        {/* Palette */}
+        <aside style={{ width: 'var(--palette-width)' }} className="h-full hidden lg:block shrink-0 overflow-y-auto overflow-x-hidden border-r border-border bg-bg-surface">
+          <div className="px-3 py-4">
+            <FieldPalette onAdd={handleAdd} disabled={fields.length >= LIMITS.FORM_FIELDS_MAX} fieldsCount={fields.length} />
+          </div>
+        </aside>
+
+        {/* Canvas — clic dans le vide désélectionne (retour au panneau de design) */}
         <div
-          className="absolute inset-0 flex"
+          className="flex-1 h-full overflow-y-auto overflow-x-hidden transition-colors"
           style={{
-            ...getBackgroundStyle(form.theme),
-            transform: isPreviewOpen ? 'translateY(-100%)' : 'translateY(0)',
-            transition: 'transform 0.45s cubic-bezier(0.77, 0, 0.175, 1)'
+            padding: 'var(--layout-padding)',
+            ['--accent' as string]: form.theme.accent
+          }}
+          onClick={(e) => {
+            // Ne désélectionner que si on clique vraiment sur le canvas, pas sur ses enfants
+            if (e.target === e.currentTarget) {
+              clearSelection();
+            }
           }}
         >
-          {/* Palette */}
-          <aside style={{ width: 'var(--palette-width)' }} className="hidden lg:block shrink-0 overflow-y-auto border-r border-border bg-bg-surface px-3.5 py-4">
-            <FieldPalette onAdd={handleAdd} disabled={fields.length >= LIMITS.FORM_FIELDS_MAX} />
-          </aside>
+          <div className="mx-auto max-w-2xl">
+            {/* Header fixe avec bannière et logo */}
+            <FormHeader
+              theme={form.theme}
+              selectedElement={selectedHeaderElement}
+              onSelectBanner={() => selectHeaderElement('banner')}
+              onSelectLogo={() => selectHeaderElement('logo')}
+              onThemeChange={handleThemeChange}
+            />
 
-          {/* Canvas — clic dans le vide désélectionne (retour au panneau de design) */}
-          <div
-            className="flex-1 overflow-y-auto transition-colors"
-            style={{ padding: 'var(--layout-padding)', ['--accent' as string]: form.theme.accent }}
-            onClick={(e) => {
-              // Ne désélectionner que si on clique vraiment sur le canvas, pas sur ses enfants
-              if (e.target === e.currentTarget) {
-                clearSelection();
-              }
-            }}
-          >
-            <div className="mx-auto max-w-2xl">
-              {/* Header fixe avec bannière et logo */}
-              <FormHeader
-                theme={form.theme}
-                selectedElement={selectedHeaderElement}
-                onSelectBanner={() => selectHeaderElement('banner')}
-                onSelectLogo={() => selectHeaderElement('logo')}
-                onThemeChange={handleThemeChange}
-              />
-
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
-                  {fields.length === 0 ? (
-                    <EmptyCanvas />
-                  ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                      {fields.map((field, i) => {
-                        const handlers = fieldHandlers[field.id];
-                        return (
-                          <SortableFieldCard
-                            key={field.id}
-                            field={field}
-                            index={i}
-                            selected={selectedFieldId === field.id}
-                            globalStyle={form.theme.field_style}
-                            cardBg={form.theme.field_bg_color}
-                            theme={form.theme}
-                            scoringEnabled={form.scoring_enabled}
-                            onSelect={handlers.onSelect}
-                            onChange={handlers.onChange}
-                            onDuplicate={handlers.onDuplicate}
-                            onDelete={handlers.onDelete}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </SortableContext>
-              </DndContext>
-            </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
+                {fields.length === 0 ? (
+                  <EmptyCanvas />
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    {fields.map((field, i) => {
+                      const handlers = fieldHandlers[field.id];
+                      return (
+                        <SortableFieldCard
+                          key={field.id}
+                          field={field}
+                          index={i}
+                          selected={selectedFieldId === field.id}
+                          globalStyle={form.theme.field_style}
+                          cardBg={form.theme.field_bg_color}
+                          theme={form.theme}
+                          scoringEnabled={form.scoring_enabled}
+                          onSelect={handlers.onSelect}
+                          onChange={handlers.onChange}
+                          onDuplicate={handlers.onDuplicate}
+                          onDelete={handlers.onDelete}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </SortableContext>
+            </DndContext>
           </div>
+        </div>
 
-          {/* Settings */}
-          <aside style={{ width: 'var(--settings-width)' }} className="hidden lg:block shrink-0 overflow-y-auto border-l border-border bg-bg-surface px-3.5 py-4">
+        {/* Settings */}
+        <aside style={{ width: 'var(--settings-width)' }} className="h-full hidden lg:block shrink-0 overflow-y-auto overflow-x-hidden border-l border-border bg-bg-surface">
+          <div className="px-3 py-4">
             {selected ? (
               <FieldSettings
                 form={form}
@@ -796,20 +782,20 @@ export default function BuilderPage() {
                 onModeChange={handleModeChange}
               />
             )}
-          </aside>
-        </div>
+          </div>
+        </aside>
+      </div>
 
-        {/* VUE APERÇU — monte depuis le bas */}
-        <div
-          className="absolute inset-0"
-          style={{
-            transform: isPreviewOpen ? 'translateY(0)' : 'translateY(100%)',
-            transition: 'transform 0.45s cubic-bezier(0.77, 0, 0.175, 1)'
-          }}
-        >
-          <PreviewModal form={form} onClose={() => setIsPreviewOpen(false)} />
-        </div>
-
+      {/* APERÇU EN OVERLAY — s'affiche par-dessus le builder avec animation */}
+      <div
+        className="absolute inset-0 z-50 transition-all duration-500 ease-out"
+        style={{
+          opacity: isPreviewOpen ? 1 : 0,
+          pointerEvents: isPreviewOpen ? 'auto' : 'none',
+          transform: isPreviewOpen ? 'translateY(0)' : 'translateY(100%)'
+        }}
+      >
+        <PreviewModal form={form} onClose={() => setIsPreviewOpen(false)} />
       </div>
 
     </div>

@@ -635,8 +635,9 @@ export function Sidebar({
         />
         {/* Menu dropdown */}
         <div
-          className="fixed z-[9999] min-w-[180px] rounded-lg border border-border bg-bg-surface p-3 animate-in fade-in duration-100"
+          className="fixed z-[9999] rounded-lg border border-border bg-bg-surface p-3 animate-in fade-in duration-100"
           style={{
+            minWidth: 'clamp(160px, 20vw, 200px)',
             top: dropdownPosition.top,
             left: dropdownPosition.left,
             boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
@@ -738,8 +739,9 @@ export function Sidebar({
         />
         {/* Menu dropdown */}
         <div
-          className="fixed z-[9999] min-w-[160px] rounded-lg border border-border bg-bg-surface p-3 animate-in fade-in duration-100"
+          className="fixed z-[9999] rounded-lg border border-border bg-bg-surface p-3 animate-in fade-in duration-100"
           style={{
+            minWidth: 'clamp(150px, 18vw, 180px)',
             top: workspaceDropdownPosition.top,
             left: workspaceDropdownPosition.left,
             boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
@@ -788,7 +790,7 @@ export function Sidebar({
 
   return (
     <aside
-      style={{ width: isCollapsed ? '56px' : 'var(--sidebar-width)' }}
+      style={{ width: isCollapsed ? 'var(--sidebar-avatar-size)' : 'var(--sidebar-width)' }}
       className={cn(
         "flex h-full flex-col border-r border-border bg-bg-surface select-none transition-all duration-200 overflow-hidden"
       )}
@@ -840,7 +842,7 @@ export function Sidebar({
       {/* Workspace Section */}
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
         <div>
-          <span className={cn("block px-3 text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary mb-1 truncate transition-all duration-200", isCollapsed && "hidden")}>
+          <span className={cn("block px-3 text-xs font-semibold uppercase tracking-[0.8px] text-text-tertiary mb-1 truncate transition-all duration-200", isCollapsed && "hidden")}>
             Espaces de travail
           </span>
 
@@ -894,7 +896,7 @@ export function Sidebar({
                             value={renameValue}
                             onChange={(e) => setRenameValue(e.target.value)}
                             onBlur={() => setRenamingId(null)}
-                            className="w-full px-1 py-0.5 border border-border bg-bg-surface rounded text-[11px] font-normal focus:outline-none focus:border-accent"
+                            className="w-full px-1 py-0.5 border border-border bg-bg-surface rounded text-xs font-normal focus:outline-none focus:border-accent"
                             autoFocus
                           />
                         </form>
@@ -953,7 +955,7 @@ export function Sidebar({
 
                   {/* Accordion Dropdown Content */}
                   {isOpen && !isCollapsed && (
-                    <div className="pl-2 pr-1 py-0 space-y-0 border-l border-border/60 ml-4 mt-0 mb-0.5 animate-in slide-in-from-top-1 duration-150 max-h-[280px] overflow-y-auto">
+                    <div className="pl-2 pr-1 py-0 border-l border-border/60 ml-4 mt-0 mb-0.5 animate-in slide-in-from-top-1 duration-150 max-h-72 overflow-y-auto">
                       {hasForms ? (
                         <>
                           {displayedForms.map((form) => (
@@ -975,7 +977,7 @@ export function Sidebar({
                                       onBlur={() => {
                                         handleRenameFormSubmit(form.id);
                                       }}
-                                      className="w-full px-1 py-0.5 border border-border bg-bg-surface rounded text-[11px] font-normal focus:outline-none focus:border-accent text-text-primary"
+                                      className="w-full px-1 py-0.5 border border-border bg-bg-surface rounded text-xs font-normal focus:outline-none focus:border-accent text-text-primary"
                                       autoFocus
                                       onKeyDown={(e) => {
                                         if (e.key === 'Escape') setEditingFormId(null);
@@ -985,7 +987,7 @@ export function Sidebar({
                                 ) : (
                                   <Link
                                     href={`/forms/${form.id}`}
-                                    style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-sm)' }}
+                                    style={{ height: 'clamp(24px, 1.8vw, 28px)', fontSize: 'var(--sidebar-text-sm)' }}
                                     className={cn(
                                       'flex items-center gap-2 px-3 text-text-secondary hover:text-text-primary rounded hover:bg-bg-elevated transition truncate flex-1',
                                       pathname === `/forms/${form.id}` && 'text-text-primary font-medium'
@@ -1027,14 +1029,15 @@ export function Sidebar({
                           {hasMoreForms && (
                             <Link
                               href={`/workspaces/${ws.id}`}
-                              className="block h-9 px-4 text-sm text-accent hover:underline font-medium flex items-center"
+                              className="block px-3 text-sm text-accent hover:underline font-medium flex items-center"
+                              style={{ height: 'clamp(24px, 1.8vw, 28px)' }}
                             >
                               Voir tous ({forms.length}) →
                             </Link>
                           )}
                         </>
                       ) : (
-                        <span className="block h-9 px-4 text-sm text-text-tertiary flex items-center">
+                        <span className="block px-3 text-sm text-text-tertiary flex items-center" style={{ height: 'clamp(24px, 1.8vw, 28px)' }}>
                           Aucun formulaire encore
                         </span>
                       )}
@@ -1042,8 +1045,8 @@ export function Sidebar({
                       {/* Bouton + Nouveau formulaire */}
                       <button
                         onClick={() => handleCreateFormInWorkspace(ws.id)}
-                        style={{ height: 'var(--sidebar-item-height)', fontSize: 'var(--sidebar-text-sm)' }}
-                        className="flex items-center gap-2 px-3 text-mooove-cyan hover:bg-papyrus-border/20 rounded-md transition w-full text-left font-medium mt-0.5"
+                        style={{ height: 'clamp(24px, 1.8vw, 28px)', fontSize: 'var(--sidebar-text-sm)' }}
+                        className="flex items-center gap-2 px-3 text-mooove-cyan hover:bg-papyrus-border/20 rounded-md transition w-full text-left font-medium mt-0"
                       >
                         <Plus
                           style={{ width: 'var(--sidebar-icon)', height: 'var(--sidebar-icon)' }}
@@ -1071,7 +1074,7 @@ export function Sidebar({
                 value={newWorkspaceName}
                 onChange={(e) => setNewWorkspaceName(e.target.value)}
                 placeholder="Nom du workspace..."
-                className="w-full h-8 px-2 text-[11px] border border-border bg-bg-surface rounded-md focus:border-accent focus:outline-none"
+                className="w-full h-8 px-2 text-xs border border-border bg-bg-surface rounded-md focus:border-accent focus:outline-none"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') setIsCreating(false);
@@ -1125,7 +1128,7 @@ export function Sidebar({
                 </span>
               </div>
               {badge && !isCollapsed && (
-                <span className="bg-bg-elevated border border-border text-text-secondary text-[9px] font-semibold px-2 py-0.5 rounded-full select-none">
+                <span className="bg-bg-elevated border border-border text-text-secondary text-xs font-semibold px-2 py-0.5 rounded-full select-none">
                   {badge}
                 </span>
               )}
@@ -1235,7 +1238,7 @@ export function Sidebar({
           <div className="space-y-6">
             {/* Lien de partage direct */}
             <div className="space-y-3">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary">
+              <span className="block text-xs font-semibold uppercase tracking-[0.8px] text-text-tertiary">
                 Lien de partage
               </span>
               <div className="flex items-center gap-2 p-3 bg-bg-elevated rounded-md border border-border">
@@ -1265,7 +1268,7 @@ export function Sidebar({
 
             {/* Formulaire d'invitation */}
             <form onSubmit={handleAddMember} className="space-y-3">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary">
+              <span className="block text-xs font-semibold uppercase tracking-[0.8px] text-text-tertiary">
                 Inviter un membre par email
               </span>
               <div className="space-y-3">
@@ -1300,10 +1303,10 @@ export function Sidebar({
 
             {/* Liste des membres */}
             <div className="space-y-3">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.8px] text-text-tertiary">
+              <span className="block text-xs font-semibold uppercase tracking-[0.8px] text-text-tertiary">
                 Membres de l'espace ({workspaceMembers.length})
               </span>
-              <div className="border border-border rounded-lg bg-bg-surface/50 divide-y divide-border overflow-hidden max-h-[220px] overflow-y-auto">
+              <div className="border border-border rounded-lg bg-bg-surface/50 divide-y divide-border overflow-hidden max-h-56 overflow-y-auto">
                 {workspaceMembers.length === 0 ? (
                   <span className="block p-4 text-sm text-text-tertiary text-center">
                     Chargement des membres...
@@ -1315,7 +1318,7 @@ export function Sidebar({
                         <span className="text-sm font-medium text-text-primary truncate">
                           {member.email}
                         </span>
-                        <span className="text-[10px] text-text-tertiary uppercase font-semibold">
+                        <span className="text-xs text-text-tertiary uppercase font-semibold">
                           {member.role}
                         </span>
                       </div>
@@ -1386,7 +1389,7 @@ export function Sidebar({
             <p className="text-sm text-text-secondary">
               Choisissez l'espace de travail cible pour déplacer ce formulaire :
             </p>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            <div className="space-y-2 max-h-80 overflow-y-auto">
               {workspaces.map((ws) => {
                 const form = movingFormId ? findFormById(movingFormId) : null;
                 const currentWsId = isLocal ? form?.workspace_id : form?.team_id;
