@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Users, Mail, CheckCircle, XCircle, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { TeamInvitation } from '@/types';
 import { acceptInvitation } from '@/lib/store/team-invitations';
 
-export default function InvitePage() {
+function InviteContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const invitationId = searchParams.get('id');
@@ -277,5 +277,24 @@ export default function InvitePage() {
         )}
       </div>
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-var(--papyrus-bg) flex items-center justify-center">
+      <div className="max-w-md mx-auto p-8 bg-var(--papyrus-surface) rounded-2xl border border-var(--papyrus-border) shadow-lg text-center">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-var(--mooove-navy)" />
+        <p className="text-gray-600">Chargement...</p>
+      </div>
+    </div>
+  );
+}
+
+export default function InvitePage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <InviteContent />
+    </Suspense>
   );
 }
