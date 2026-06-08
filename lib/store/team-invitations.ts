@@ -67,15 +67,17 @@ export async function getTeamMembers(teamId: string): Promise<TeamMemberWithProf
 
   if (error) throw error;
 
-  return (data || []).map(member => ({
-    user_id: member.user_id,
-    team_id: member.team_id,
-    role: member.role as TeamRole,
-    joined_at: member.joined_at,
-    name: member.profiles ?
-      [member.profiles.first_name, member.profiles.last_name].filter(Boolean).join(' ') : undefined,
-    email: member.profiles?.email
-  }));
+  return (data || []).map(member => {
+    const profile: any = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+    return {
+      user_id: member.user_id,
+      team_id: member.team_id,
+      role: member.role as TeamRole,
+      joined_at: member.joined_at,
+      name: profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') : undefined,
+      email: profile?.email
+    };
+  });
 }
 
 /**

@@ -5,9 +5,8 @@ import { Users, Mail, Link as LinkIcon, Crown, User, Trash2, Copy, Check, X, Sen
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { Input } from '@/components/ui/Input';
+import { EmailAutocomplete, type EmailSuggestion } from '@/components/ui/EmailAutocomplete';
 import { toast } from '@/components/ui/Toast';
-import { cn } from '@/lib/utils';
 import type { TeamMemberWithProfile, TeamInvitation, TeamRole } from '@/types';
 import {
   getTeamMembers,
@@ -34,6 +33,13 @@ export default function TeamSettingsPage() {
   const [roleToInvite, setRoleToInvite] = useState<TeamRole>('member');
   const [generatedLink, setGeneratedLink] = useState<string>('');
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
+
+  // Créer les suggestions d'email à partir des membres existants
+  const emailSuggestions: EmailSuggestion[] = members.map(member => ({
+    email: member.email || '',
+    name: member.name || undefined,
+    isExisting: true
+  })).filter(suggestion => suggestion.email); // Filtrer les emails vides
 
   // Charger les données
   useEffect(() => {
@@ -233,7 +239,7 @@ export default function TeamSettingsPage() {
             <div key={member.user_id} className="flex items-center justify-between p-4 border border-var(--papyrus-border) rounded-xl bg-white">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-var(--mooove-navy) rounded-full flex items-center justify-center text-white font-medium">
-                  {member.name ? member.name[0].toUpperCase() : member.email[0].toUpperCase()}
+                  {member.name ? member.name[0].toUpperCase() : (member.email?.[0] || '?').toUpperCase()}
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">
@@ -354,11 +360,11 @@ export default function TeamSettingsPage() {
           </p>
 
           <div className="space-y-3">
-            <Input
-              type="email"
-              placeholder="nom@exemple.com"
+            <EmailAutocomplete
               value={emailToInvite}
-              onChange={(e) => setEmailToInvite(e.target.value)}
+              onChange={setEmailToInvite}
+              suggestions={emailSuggestions}
+              placeholder="nom@exemple.com"
               label="Adresse email"
             />
 

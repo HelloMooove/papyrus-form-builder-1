@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Monitor, Smartphone, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Monitor, Smartphone, X, GitFork, Eye } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Field, FieldStyle, Form, FormTheme } from '@/types';
 import { FieldRenderer } from './FieldRenderer';
@@ -16,6 +16,7 @@ import { useFormScore } from '@/lib/hooks/useFormScore';
 import type { ScoreResult } from '@/lib/scoring';
 import { ScoreDisplay } from '@/components/respondent/ScoreDisplay';
 import { evaluateLogicRules, evaluateConditions } from '@/lib/logic-evaluation';
+import { FormFlowView } from './FormFlowView';
 
 interface Props {
   form: Form;
@@ -39,6 +40,8 @@ export function PreviewModal({ form, onClose }: Props) {
   } = useFormScore(form);
 
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
+
+  const [activeTab, setActiveTab] = useState<'preview' | 'flow'>('preview');
 
   // Évaluer la visibilité des champs (changement de réponses, structure ou règles)
   useEffect(() => {
@@ -72,7 +75,14 @@ export function PreviewModal({ form, onClose }: Props) {
 
       {/* Toolbar bien positionnée avec z-index prioritaire et safe zone */}
       <div className="relative z-[100] w-full" style={{ boxSizing: 'border-box' }}>
-        <PreviewToolbar form={form} device={device} setDevice={setDevice} onClose={handleClose} />
+        <PreviewToolbar 
+          form={form} 
+          device={device} 
+          setDevice={setDevice} 
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onClose={handleClose} 
+        />
       </div>
 
       {/* Animation du parchemin pour le contenu seulement - isolation du stacking context */}
@@ -80,9 +90,15 @@ export function PreviewModal({ form, onClose }: Props) {
         className="flex h-full w-full flex-1 flex-col relative z-0"
         style={{ transformOrigin: 'top center' }}
       >
-        {form.save_and_resume && <SaveResumeBar formId={form.id} containerRef={contentRef} />}
-        <div ref={contentRef} className="flex-1 overflow-y-auto" style={getBackgroundStyle(form.theme)}>
-          {mode === 'sections' ? (
+        {activeTab === 'preview' && form.save_and_resume && <SaveResumeBar formId={form.id} containerRef={contentRef} />}
+        <div 
+          ref={contentRef} 
+          className="flex-1 overflow-y-auto" 
+          style={activeTab === 'preview' ? getBackgroundStyle(form.theme) : { backgroundColor: 'var(--bg-base)' }}
+        >
+          {activeTab === 'flow' ? (
+            <FormFlowView form={form} />
+          ) : mode === 'sections' ? (
             <SectionsPreview
               form={form}
               device={device}
@@ -127,11 +143,15 @@ function PreviewToolbar({
   form,
   device,
   setDevice,
+  activeTab,
+  setActiveTab,
   onClose
 }: {
   form: Form;
   device: Device;
   setDevice: (d: Device) => void;
+  activeTab: 'preview' | 'flow';
+  setActiveTab: (t: 'preview' | 'flow') => void;
   onClose: () => void;
 }) {
   const mode = form.display_mode ?? 'sections';
@@ -140,17 +160,46 @@ function PreviewToolbar({
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', padding: '0 24px', minHeight: '3.5rem' }}>
-      {/* GAUCHE — largeur fixe identique au côté gauche du toolbar édition */}
-      <div style={{ flex: 1 }}></div>
+      {/* GAUCHE — Onglets de vue */}
+      <div style={{ flex: 1, display: 'flex', gap: '8px' }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab('preview')}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border transition',
+            activeTab === 'preview'
+              ? 'bg-bg-elevated border-border-strong text-text-primary'
+              : 'border-transparent text-text-secondary hover:text-text-primary'
+          )}
+        >
+          <Eye size={14} /> Aperçu interactif
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('flow')}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border transition',
+            activeTab === 'flow'
+              ? 'bg-bg-elevated border-border-strong text-text-primary'
+              : 'border-transparent text-text-secondary hover:text-text-primary'
+          )}
+        >
+          <GitFork size={14} /> Flux de logique
+        </button>
+      </div>
 
       {/* CENTRE */}
-      <div className="flex items-center gap-0.5 rounded-md border border-border-strong bg-bg-base p-0.5">
-        <DeviceButton active={device === 'desktop'} onClick={() => setDevice('desktop')}>
-          <Monitor className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Desktop</span>
-        </DeviceButton>
-        <DeviceButton active={device === 'mobile'} onClick={() => setDevice('mobile')}>
-          <Smartphone className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Mobile</span>
-        </DeviceButton>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        {activeTab === 'preview' && (
+          <div className="flex items-center gap-0.5 rounded-md border border-border-strong bg-bg-base p-0.5">
+            <DeviceButton active={device === 'desktop'} onClick={() => setDevice('desktop')}>
+              <Monitor className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Desktop</span>
+            </DeviceButton>
+            <DeviceButton active={device === 'mobile'} onClick={() => setDevice('mobile')}>
+              <Smartphone className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Mobile</span>
+            </DeviceButton>
+          </div>
+        )}
       </div>
 
       {/* DROITE — flex:1 + flex-end pour coller à droite */}
